@@ -39,6 +39,23 @@ next-env.d.ts# Ignore runtime database files
 __pycache__/
 node_modules/
 dist/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# Serena MCP (project-specific metadata)
+.serena/
+
+# Recordings (sensitive data)
+backend/recordings/*.wav
+*.wav
 
 # Whisper.cpp - don't track the entire repository
 whisper/whisper.cpp/
+whisper.cpp/
+
+# Logs
+*.log
+backend/logs/

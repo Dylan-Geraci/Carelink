@@ -94,73 +94,106 @@ Carelink is a privacy-first, offline-capable application designed to assist care
 
 ### AI & ML
 - **whisper.cpp (base.en model)**: Offline speech-to-text transcription
-- **Gemma 3n**: Local language model for text analysis and summarization
-- **Ollama Runtime**: Manages local AI model execution
+- **DeepSeek v3.1 (671b-cloud)**: Local language model for text analysis and summarization
+- **Ollama Runtime**: Manages local AI model execution with DeepSeek
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Frontend Layer                        │
-│  (Next.js 15 + React 19 + TypeScript + Tailwind CSS)       │
-│  - Audio Recording Interface                                 │
-│  - Real-time Transcription Display                          │
-│  - Session Timeline & Analytics                             │
-└──────────────────┬──────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         Frontend Layer                           │
+│    (Next.js 15 + React 19 + TypeScript + Tailwind CSS)         │
+│  - Audio Recording Interface                                     │
+│  - Real-time Transcription Display                              │
+│  - Session Timeline & Analytics                                 │
+│  - Landing Page & Marketing Site                                │
+└──────────────────┬───────────────────────────────────────────────┘
                    │ REST API (HTTP)
-┌──────────────────▼──────────────────────────────────────────┐
-│                       API Gateway                            │
-│                  (FastAPI + CORS Middleware)                 │
-│  - Request Routing                                           │
-│  - Global Exception Handling                                 │
-│  - Health Check Endpoints                                    │
-└───────┬────────────────┬────────────────┬────────────────────┘
-        │                │                │
-        ▼                ▼                ▼
-┌───────────────┐ ┌──────────────┐ ┌────────────────────┐
-│   Session     │ │  Transcribe  │ │    Summarize       │
-│   Routes      │ │   Routes     │ │     Routes         │
-│  - Create     │ │  - Audio     │ │  - AI Analysis     │
-│  - Update     │ │    Upload    │ │  - Prompt Chains   │
-│  - Delete     │ │  - Process   │ │  - Mood Detection  │
-│  - List       │ │              │ │                    │
-└───────┬───────┘ └──────┬───────┘ └────────┬───────────┘
+┌──────────────────▼───────────────────────────────────────────────┐
+│                        API Gateway                                │
+│                   (FastAPI + CORS Middleware)                     │
+│  - Request Routing                                                │
+│  - Global Exception Handling                                      │
+│  - Health Check Endpoints                                         │
+└───────┬────────────────┬───────────────────┬──────────────────────┘
         │                │                   │
-        └────────────────┼───────────────────┘
-                         │
-        ┌────────────────▼────────────────────────────┐
-        │          Processing Layer                    │
-        │                                              │
-        │  ┌──────────────┐      ┌─────────────────┐ │
-        │  │   FFmpeg     │      │   whisper.cpp   │ │
-        │  │  (WebM→WAV)  │─────▶│  (WAV→Text)     │ │
-        │  └──────────────┘      └─────────────────┘ │
-        │                                              │
-        │  ┌──────────────────────────────────────┐  │
-        │  │         Ollama (Gemma 3n)            │  │
-        │  │      (Text→Analysis/Summary)         │  │
-        │  └──────────────────────────────────────┘  │
-        └─────────────────┬───────────────────────────┘
+        ▼                ▼                   ▼
+┌───────────────┐ ┌──────────────┐ ┌─────────────────────────────┐
+│   Session     │ │  Transcribe  │ │   Session-Specific Chains   │
+│   Routes      │ │   Routes     │ │  (/api/freeform/*,          │
+│  - Create     │ │  - Audio     │ │   /api/medication/*,        │
+│  - Update     │ │    Upload    │ │   /api/sundowning/*)        │
+│  - Delete     │ │  - Process   │ │                             │
+│  - List       │ │              │ │  Each chain has 3 stages:   │
+└───────┬───────┘ └──────┬───────┘ │  1. Extract                 │
+        │                │         │  2. Analyze                 │
+        │                │         │  3. Summarize               │
+        └────────────────┼─────────┴──────────┬──────────────────┘
+                         │                    │
+        ┌────────────────▼────────────────────▼──────────────────┐
+        │               Processing Layer                          │
+        │                                                         │
+        │  ┌──────────────┐      ┌──────────────────────────┐   │
+        │  │   FFmpeg     │      │     whisper.cpp          │   │
+        │  │  (WebM→WAV)  │─────▶│  (WAV→Text Transcription)│   │
+        │  └──────────────┘      └──────────────────────────┘   │
+        │                                                         │
+        │  ┌──────────────────────────────────────────────────┐ │
+        │  │      3-Stage AI Prompt Chain Architecture        │ │
+        │  │                                                  │ │
+        │  │  Transcript → EXTRACT → ANALYZE → SUMMARIZE     │ │
+        │  │                 ↓          ↓          ↓         │ │
+        │  │              JSON       JSON       JSON +       │ │
+        │  │              Data       Insights   Store DB     │ │
+        │  │                                                  │ │
+        │  │  ┌────────────────────────────────────────────┐│ │
+        │  │  │   Ollama (DeepSeek v3.1:671b-cloud)        ││ │
+        │  │  │   - Loads prompts from /backend/prompts/   ││ │
+        │  │  │   - {type}_extract.json                    ││ │
+        │  │  │   - {type}_analyze.json                    ││ │
+        │  │  │   - {type}_summary.json                    ││ │
+        │  │  └────────────────────────────────────────────┘│ │
+        │  └──────────────────────────────────────────────────┘ │
+        └─────────────────┬────────────────────────────────────┘
                           │
-        ┌─────────────────▼────────────────────────┐
-        │           Data Layer                      │
-        │                                           │
-        │  ┌─────────────────────────────────────┐ │
-        │  │      SQLite Database                │ │
-        │  │  - sessions                         │ │
-        │  │  - transcripts                      │ │
-        │  │  - summaries                        │ │
-        │  │  - audio_chunks                     │ │
-        │  └─────────────────────────────────────┘ │
-        │                                           │
-        │  ┌─────────────────────────────────────┐ │
-        │  │    File Storage (Local)             │ │
-        │  │  - Audio Recordings (.wav)          │ │
-        │  │  - Session Metadata                 │ │
-        │  └─────────────────────────────────────┘ │
-        └───────────────────────────────────────────┘
+        ┌─────────────────▼──────────────────────────────┐
+        │              Data Layer                         │
+        │                                                 │
+        │  ┌───────────────────────────────────────────┐ │
+        │  │         SQLite Database                   │ │
+        │  │  - sessions (session metadata)            │ │
+        │  │  - transcripts (speech-to-text output)    │ │
+        │  │  - summaries (AI analysis results)        │ │
+        │  │  - audio_chunks (recording segments)      │ │
+        │  └───────────────────────────────────────────┘ │
+        │                                                 │
+        │  ┌───────────────────────────────────────────┐ │
+        │  │       File Storage (Local)                │ │
+        │  │  - /backend/recordings/*.wav              │ │
+        │  │  - /backend/prompts/*.json (templates)    │ │
+        │  └───────────────────────────────────────────┘ │
+        └─────────────────────────────────────────────────┘
+
+### Prompt Chain Flow
+
+Each session type (freeform, medication, sundowning) follows a 3-stage chain:
+
+1. **EXTRACT Stage**: Pulls structured data from raw transcript
+   - Input: Raw transcript text
+   - Processing: Ollama + extract prompt template
+   - Output: JSON with conversation themes, cognitive signs, repeated questions
+
+2. **ANALYZE Stage**: Interprets extracted data for patterns
+   - Input: Extracted JSON data
+   - Processing: Ollama + analyze prompt template
+   - Output: JSON with tone, agitation score, cognitive function analysis
+
+3. **SUMMARIZE Stage**: Generates final summary and stores in database
+   - Input: Both extracted and analyzed data
+   - Processing: Ollama + summary prompt template
+   - Output: Comprehensive summary + database storage
 ```
 
 ---
@@ -229,8 +262,8 @@ cd ..
 ```bash
 # Install Ollama from https://ollama.ai/download
 
-# Pull the Gemma 3n model
-ollama pull gemma3n:latest
+# Pull the DeepSeek model
+ollama pull deepseek-v3.1:671b-cloud
 
 # Start Ollama service (keep running in separate terminal)
 ollama serve
