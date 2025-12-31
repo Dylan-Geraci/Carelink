@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { api, SessionListItem } from "@/lib/api"
+import { api, SessionListItem, RecordAudioResponse, ProcessSessionResponse } from "@/lib/api"
+import { useAudioRecording } from "@/hooks/useAudioRecording"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -26,8 +27,9 @@ import {
 } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-type Screen = "home" | "session-type" | "session-confirm" | "session-summary"
+type Screen = "home" | "session-type" | "session-confirm" | "processing" | "session-summary"
 type SessionType = "medication" | "sundowning" | "freeform" | null
+type ProcessingStage = "transcribing" | "analyzing" | "complete"
 
 // Audio Waveform Component
 const AudioWaveform = ({ isListening, isRecording }: { isListening: boolean; isRecording: boolean }) => {
@@ -90,13 +92,19 @@ export default function Component() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("home")
   const [selectedSessionType, setSelectedSessionType] = useState<SessionType>(null)
   const [isAnimating, setIsAnimating] = useState(false)
-  const [isListening, setIsListening] = useState(false)
-  const [isRecording, setIsRecording] = useState(false)
   const [reflectionText, setReflectionText] = useState("")
   const [showWeeklyHighlights, setShowWeeklyHighlights] = useState(false)
   const [currentAffirmation, setCurrentAffirmation] = useState(0)
   const [sessions, setSessions] = useState<SessionListItem[]>([])
   const [isLoadingSessions, setIsLoadingSessions] = useState(true)
+  const [recordingResult, setRecordingResult] = useState<RecordAudioResponse | null>(null)
+  const [analysisResult, setAnalysisResult] = useState<ProcessSessionResponse | null>(null)
+  const [recordingError, setRecordingError] = useState<string | null>(null)
+  const [processingStage, setProcessingStage] = useState<ProcessingStage>("transcribing")
+  const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false)
+
+  // Use the audio recording hook
+  const audioRecording = useAudioRecording()
 
   const affirmations = [
     "You are doing sacred work.",
@@ -148,6 +156,34 @@ export default function Component() {
   yesterday.setDate(yesterday.getDate() - 1)
   const dayBefore = new Date(today)
   dayBefore.setDate(dayBefore.getDate() - 2)
+
+  // Helper functions for session styling (fixed)
+  const getSessionIcon = (sessionType: string) => {
+    switch (sessionType.toLowerCase()) {
+      case 'medication': return '💊'
+      case 'sundowning': return '🌅'
+      case 'freeform': return '💬'
+      default: return '📝'
+    }
+  }
+
+  const getSessionColor = (sessionType: string) => {
+    switch (sessionType.toLowerCase()) {
+      case 'medication': return '#F0E6FF' // lavender
+      case 'sundowning': return '#FFE8D6' // peach
+      case 'freeform': return '#E8F5E8' // sage
+      default: return '#E6F3FF' // soft blue
+    }
+  }
+
+  const getSessionBorderColor = (sessionType: string) => {
+    switch (sessionType.toLowerCase()) {
+      case 'medication': return '#D4C5F9'
+      case 'sundowning': return '#FFD4B3'
+      case 'freeform': return '#B8D4B8'
+      default: return '#B3D9FF'
+    }
+  }
 
   // Group sessions by day
   const groupSessionsByDay = (sessions: SessionListItem[]) => {
@@ -212,34 +248,6 @@ export default function Component() {
 
   const sessionsByDay = groupSessionsByDay(sessions)
 
-  // Helper functions for session styling
-  const getSessionIcon = (sessionType: string) => {
-    switch (sessionType.toLowerCase()) {
-      case 'medication': return '💊'
-      case 'sundowning': return '🌅'
-      case 'freeform': return '💬'
-      default: return '📝'
-    }
-  }
-
-  const getSessionColor = (sessionType: string) => {
-    switch (sessionType.toLowerCase()) {
-      case 'medication': return '#F0E6FF' // lavender
-      case 'sundowning': return '#FFE8D6' // peach
-      case 'freeform': return '#E8F5E8' // sage
-      default: return '#E6F3FF' // soft blue
-    }
-  }
-
-  const getSessionBorderColor = (sessionType: string) => {
-    switch (sessionType.toLowerCase()) {
-      case 'medication': return '#D4C5F9'
-      case 'sundowning': return '#FFD4B3'
-      case 'freeform': return '#B8D4B8'
-      default: return '#B3D9FF'
-    }
-  }
-
   // Use real sessions data, fallback to empty array if loading or no data
   const displaySessionsByDay = isLoadingSessions ? [] : sessionsByDay
 
@@ -273,28 +281,77 @@ export default function Component() {
     },
   ]
 
-  // Generate dynamic session data based on selected session type
-  const sessionData = {
-    type: selectedSessionType ? selectedSessionType.charAt(0).toUpperCase() + selectedSessionType.slice(1) : "Session",
-    duration: "4 minutes", // This would come from actual recording duration
-    timestamp: `Today at ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`,
-    mood: "Calm", // This would come from AI analysis
-    moodColor: "#C9E4DE",
-    keyEvents: [
-      {
-        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        event: `${selectedSessionType} session completed`,
-        icon: selectedSessionType === 'medication' ? Pill : selectedSessionType === 'sundowning' ? Sunset : FileText,
-        details: "Session recorded successfully",
-      },
-    ],
-    aiSummary: selectedSessionType === 'medication' 
-      ? "This medication session has been recorded. The AI analysis will be available once the session is processed."
-      : selectedSessionType === 'sundowning'
-      ? "This sundowning session has been recorded. The AI analysis will be available once the session is processed."
-      : "This conversation has been recorded. The AI analysis will be available once the session is processed.",
-    tags: ["recorded", "pending analysis"],
+  // Generate dynamic session data based on recording and analysis results
+  const getSessionData = () => {
+    const baseData = {
+      type: selectedSessionType ? selectedSessionType.charAt(0).toUpperCase() + selectedSessionType.slice(1) : "Session",
+      duration: audioRecording.state.recordingDuration ? `${audioRecording.state.recordingDuration} seconds` : "Recording...",
+      timestamp: recordingResult?.metadata?.timestamp
+        ? new Date(recordingResult.metadata.timestamp).toLocaleString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          })
+        : `Today at ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`,
+    }
+
+    if (analysisResult) {
+      // Use real AI analysis data
+      return {
+        ...baseData,
+        mood: analysisResult.analysis.mood_label || "Processing...",
+        moodColor: "#C9E4DE", // Could map this based on mood
+        keyEvents: [
+          {
+            time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            event: `${selectedSessionType} session completed with AI analysis`,
+            icon: selectedSessionType === 'medication' ? Pill : selectedSessionType === 'sundowning' ? Sunset : FileText,
+            details: `Transcript: "${recordingResult?.transcript?.substring(0, 100)}${recordingResult?.transcript?.length > 100 ? '...' : ''}"`,
+          },
+        ],
+        aiSummary: analysisResult.analysis.summary || "AI analysis completed",
+        tags: analysisResult.analysis.tags || ["completed"],
+        suggestions: analysisResult.analysis.suggestions || [],
+        agitationScore: analysisResult.analysis.agitation_score || 0,
+      }
+    } else if (recordingResult) {
+      // Recording complete, analysis pending
+      return {
+        ...baseData,
+        mood: "Processing...",
+        moodColor: "#F0F0F0",
+        keyEvents: [
+          {
+            time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            event: `${selectedSessionType} session recorded`,
+            icon: selectedSessionType === 'medication' ? Pill : selectedSessionType === 'sundowning' ? Sunset : FileText,
+            details: `Transcript: "${recordingResult.transcript.substring(0, 100)}${recordingResult.transcript.length > 100 ? '...' : ''}"`,
+          },
+        ],
+        aiSummary: "Recording completed successfully. Running AI analysis...",
+        tags: ["recorded", "analyzing"],
+      }
+    } else {
+      // Default/loading state
+      return {
+        ...baseData,
+        mood: "Recording...",
+        moodColor: "#F0F0F0",
+        keyEvents: [
+          {
+            time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            event: audioRecording.state.isRecording ? "Recording in progress..." : "Preparing to record...",
+            icon: selectedSessionType === 'medication' ? Pill : selectedSessionType === 'sundowning' ? Sunset : FileText,
+            details: audioRecording.state.isRecording ? "Listening to your voice..." : "Session starting...",
+          },
+        ],
+        aiSummary: audioRecording.state.isRecording ? "Recording your session..." : "Preparing to capture this moment...",
+        tags: ["recording"],
+      }
+    }
   }
+
+  const sessionData = getSessionData()
 
   // Navigation functions
   const startNewSession = () => {
@@ -319,8 +376,7 @@ export default function Component() {
         setCurrentScreen("session-type")
         setSelectedSessionType(null)
         setIsAnimating(false)
-        setIsListening(false)
-        setIsRecording(false)
+        audioRecording.resetRecording()
       }, 300)
     } else if (currentScreen === "session-type") {
       setCurrentScreen("home")
@@ -331,75 +387,83 @@ export default function Component() {
     if (!selectedSessionType) return
 
     try {
-      // Start a new session via API
-      const response = await api.startSession({
-        session_type: selectedSessionType,
-        timestamp: Date.now()
-      })
+      setRecordingError(null)
 
-      console.log('Session started:', response.session_id)
-      
-      // Start recording state immediately
-      setIsListening(true)
-      setIsRecording(true)
+      // Start real audio recording
+      await audioRecording.startRecording()
 
-      // Use requestAnimationFrame for smoother UI updates
-      const startTime = Date.now()
-      const recordingDuration = 3000 // 3 seconds
-      const processingDuration = 1000 // 1 second
+      // Auto-stop recording after 30 seconds (configurable)
+      const recordingTimeout = setTimeout(async () => {
+        await handleStopRecording()
+      }, 30000) // 30 second recording
 
-      const updateRecording = () => {
-        const elapsed = Date.now() - startTime
-        
-        if (elapsed < recordingDuration) {
-          // Still recording
-          requestAnimationFrame(updateRecording)
-        } else if (elapsed < recordingDuration + processingDuration) {
-          // Processing phase
-          setIsRecording(false)
-          requestAnimationFrame(updateRecording)
-        } else {
-          // Done - go to summary
-          setIsListening(false)
-          setCurrentScreen("session-summary")
+      // Clear timeout if user manually stops recording
+      audioRecording.state.isRecording && setTimeout(() => {
+        if (!audioRecording.state.isRecording) {
+          clearTimeout(recordingTimeout)
         }
-      }
+      }, 100)
 
-      requestAnimationFrame(updateRecording)
-      
     } catch (error) {
-      console.error('Failed to start session:', error)
-      // Still proceed with UI flow even if API fails
-      setIsListening(true)
-      setIsRecording(true)
-      
-      const startTime = Date.now()
-      const recordingDuration = 3000
-      const processingDuration = 1000
+      console.error('Failed to start recording:', error)
+      setRecordingError(error instanceof Error ? error.message : 'Failed to start recording')
+    }
+  }
 
-      const updateRecording = () => {
-        const elapsed = Date.now() - startTime
-        
-        if (elapsed < recordingDuration) {
-          requestAnimationFrame(updateRecording)
-        } else if (elapsed < recordingDuration + processingDuration) {
-          setIsRecording(false)
-          requestAnimationFrame(updateRecording)
-        } else {
-          setIsListening(false)
-          setCurrentScreen("session-summary")
-        }
+  const handleStopRecording = async () => {
+    try {
+      if (!selectedSessionType) return
+
+      // Navigate to processing screen immediately
+      setCurrentScreen("processing")
+      setProcessingStage("transcribing")
+
+      // Stop recording and get audio blob
+      const audioBlob = await audioRecording.stopRecording()
+
+      if (!audioBlob) {
+        throw new Error('No audio data recorded')
       }
 
-      requestAnimationFrame(updateRecording)
+      // Upload audio and get transcript
+      const recordingResponse = await api.recordAudio(audioBlob, selectedSessionType)
+      setRecordingResult(recordingResponse)
+
+      // Move to analyzing stage
+      setProcessingStage("analyzing")
+
+      // Start AI analysis
+      const analysisResponse = await api.processSession({
+        transcript: recordingResponse.transcript,
+        metadata: recordingResponse.metadata
+      })
+      setAnalysisResult(analysisResponse)
+
+      // Mark as complete and navigate to summary
+      setProcessingStage("complete")
+      setTimeout(() => {
+        setCurrentScreen("session-summary")
+      }, 500) // Brief pause to show completion
+
+    } catch (error) {
+      console.error('Failed to process recording:', error)
+      setRecordingError(error instanceof Error ? error.message : 'Failed to process recording')
+      // Still navigate to summary even on error
+      setCurrentScreen("session-summary")
     }
   }
 
   const handleSaveAndContinue = async () => {
+    // Reset all recording state
+    audioRecording.resetRecording()
+    setRecordingResult(null)
+    setAnalysisResult(null)
+    setRecordingError(null)
+    setProcessingStage("transcribing")
     setCurrentScreen("home")
     setSelectedSessionType(null)
     setReflectionText("")
-    
+
     // Refresh sessions list
     try {
       const response = await api.getSessions()
@@ -410,27 +474,36 @@ export default function Component() {
   }
 
   const handleCancelSession = () => {
-    // Go back to home without saving
+    // Reset recording state and go back to home without saving
+    audioRecording.resetRecording()
+    setRecordingResult(null)
+    setAnalysisResult(null)
+    setRecordingError(null)
+    setProcessingStage("transcribing")
     setCurrentScreen("home")
     setSelectedSessionType(null)
     setReflectionText("")
   }
 
   const handleRerecord = () => {
-    // Go back to session confirmation to re-record
+    // Reset recording state and go back to session confirmation to re-record
+    audioRecording.resetRecording()
+    setRecordingResult(null)
+    setAnalysisResult(null)
+    setRecordingError(null)
+    setProcessingStage("transcribing")
     setCurrentScreen("session-confirm")
     setReflectionText("")
   }
 
-  // Start listening animation when entering confirm screen
+  // Clean up recording when leaving confirm/processing/summary screens
   useEffect(() => {
-    if (currentScreen === "session-confirm") {
-      setTimeout(() => {
-        setIsListening(true)
-      }, 500)
-    } else {
-      setIsListening(false)
-      setIsRecording(false)
+    if (currentScreen !== "session-confirm" && currentScreen !== "processing" && currentScreen !== "session-summary") {
+      audioRecording.resetRecording()
+      setRecordingResult(null)
+      setAnalysisResult(null)
+      setRecordingError(null)
+      setProcessingStage("transcribing")
     }
   }, [currentScreen])
 
@@ -547,7 +620,7 @@ export default function Component() {
                     </div>
                   ) : (
                     displaySessionsByDay.map((day, dayIndex) => (
-                    <div key={day.date} className="space-y-6">
+                    <div key={day.fullDate} className="space-y-6">
                       {/* Day Header */}
                       <div className="sticky top-0 z-10 py-3 pl-16" style={{ backgroundColor: "#FDFCF9" }}>
                         <h2 className="text-2xl font-light text-gray-800 mb-1" style={{ fontFamily: "Georgia, serif" }}>
@@ -780,23 +853,24 @@ export default function Component() {
                       className="w-64 h-32 mx-auto rounded-3xl flex items-center justify-center transition-all duration-500 ease-out"
                       style={{
                         backgroundColor: "#F8F9FA",
-                        boxShadow: isListening
+                        boxShadow: (audioRecording.state.isRecording || audioRecording.state.isProcessing)
                           ? "0 0 0 20px rgba(139, 170, 173, 0.05), 0 0 0 40px rgba(139, 170, 173, 0.02)"
                           : "0 8px 25px rgba(0,0,0,0.08)",
                       }}
                     >
-                      <AudioWaveform isListening={isListening} isRecording={isRecording} />
+                      <AudioWaveform isListening={audioRecording.state.isRecording || audioRecording.state.isProcessing} isRecording={audioRecording.state.isRecording} />
                     </div>
                   </div>
 
                   {/* Dynamic Microcopy */}
                   <div className="mb-8">
                     <p className="text-gray-400 text-sm leading-relaxed italic">
-                      {!isListening && "Getting ready to listen..."}
-                      {isListening &&
-                        !isRecording &&
-                        "I'm listening—just speak naturally, I'll capture the important parts."}
-                      {isRecording && "Recording your words with care..."}
+                      {!audioRecording.state.isRecording && !audioRecording.state.isProcessing && "Ready to listen when you are..."}
+                      {audioRecording.state.isRecording && "Recording your words with care..."}
+                      {audioRecording.state.isProcessing && "Processing your recording..."}
+                      {recordingError && (
+                        <span className="text-red-500">Error: {recordingError}</span>
+                      )}
                     </p>
                   </div>
 
@@ -815,19 +889,154 @@ export default function Component() {
                     </div>
                   </div>
 
-                  {/* Start Button */}
-                  <Button
-                    size="lg"
-                    onClick={handleStartSession}
-                    disabled={isRecording}
-                    className="w-full h-16 text-lg font-medium rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-                    style={{
-                      backgroundColor: isRecording ? "#8BAAAD" : "#546A7B",
-                      color: "white",
-                    }}
-                  >
-                    {isRecording ? "Recording..." : "Begin Listening"}
-                  </Button>
+                  {/* Start/Stop Button */}
+                  <div className="space-y-3">
+                    <Button
+                      size="lg"
+                      onClick={audioRecording.state.isRecording ? handleStopRecording : handleStartSession}
+                      disabled={audioRecording.state.isProcessing}
+                      className="w-full h-16 text-lg font-medium rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                      style={{
+                        backgroundColor: audioRecording.state.isRecording ? "#DC2626" : audioRecording.state.isProcessing ? "#8BAAAD" : "#546A7B",
+                        color: "white",
+                      }}
+                    >
+                      {audioRecording.state.isProcessing ? "Processing..." :
+                       audioRecording.state.isRecording ? "Stop Recording" : "Begin Listening"}
+                    </Button>
+
+                    {audioRecording.state.isRecording && (
+                      <p className="text-center text-sm text-gray-500">
+                        Recording time: {audioRecording.state.recordingDuration}s
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* Processing Screen */}
+        {currentScreen === "processing" && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ backgroundColor: "#FDFCF9" }}>
+            <div className="w-full max-w-lg">
+              <Card className="border-0 shadow-2xl" style={{ backgroundColor: "#FFFFFF" }}>
+                <CardContent className="p-12 text-center">
+                  {/* Animated Processing Icon */}
+                  <div className="mb-8">
+                    <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center animate-pulse">
+                      <Sparkles className="w-12 h-12 text-purple-600" />
+                    </div>
+                  </div>
+
+                  {/* Header */}
+                  <div className="mb-8">
+                    <h1
+                      className="text-3xl font-light text-gray-800 mb-4 leading-relaxed"
+                      style={{ fontFamily: "Georgia, serif" }}
+                    >
+                      {processingStage === "transcribing" && "Capturing your words..."}
+                      {processingStage === "analyzing" && "Understanding the moment..."}
+                      {processingStage === "complete" && "Ready! ✨"}
+                    </h1>
+                    <p className="text-gray-500 text-lg font-light leading-relaxed">
+                      {processingStage === "transcribing" && "Transcribing your recording with care"}
+                      {processingStage === "analyzing" && "AI is analyzing the conversation"}
+                      {processingStage === "complete" && "Your memory has been processed"}
+                    </p>
+                  </div>
+
+                  {/* Progress Steps */}
+                  <div className="mb-8 space-y-3">
+                    {/* Step 1: Transcribing */}
+                    <div className="flex items-center gap-3 p-4 rounded-xl transition-all duration-300"
+                         style={{
+                           backgroundColor: processingStage === "transcribing" ? "#E8F5E8" :
+                                          ["analyzing", "complete"].includes(processingStage) ? "#F0F9FF" : "#F8F9FA"
+                         }}>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center relative" style={{
+                        backgroundColor: ["analyzing", "complete"].includes(processingStage) ? "#B8D4B8" : "#D4C5F9"
+                      }}>
+                        {["analyzing", "complete"].includes(processingStage) ? (
+                          <span className="text-white font-bold">✓</span>
+                        ) : processingStage === "transcribing" ? (
+                          <div className="flex gap-0.5">
+                            <div className="w-1 h-1 rounded-full bg-white animate-pulse" style={{ animationDelay: "0ms" }}></div>
+                            <div className="w-1 h-1 rounded-full bg-white animate-pulse" style={{ animationDelay: "150ms" }}></div>
+                            <div className="w-1 h-1 rounded-full bg-white animate-pulse" style={{ animationDelay: "300ms" }}></div>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="text-left flex-1">
+                        <p className="text-sm font-medium text-gray-800">Transcribing Audio</p>
+                        <p className="text-xs text-gray-500">Converting speech to text</p>
+                      </div>
+                    </div>
+
+                    {/* Step 2: Analyzing */}
+                    <div className="flex items-center gap-3 p-4 rounded-xl transition-all duration-300"
+                         style={{
+                           backgroundColor: processingStage === "analyzing" ? "#FFE8D6" :
+                                          processingStage === "complete" ? "#F0F9FF" : "#F8F9FA"
+                         }}>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center relative" style={{
+                        backgroundColor: processingStage === "complete" ? "#B8D4B8" :
+                                       processingStage === "analyzing" ? "#FFD4B3" : "#E5E7EB"
+                      }}>
+                        {processingStage === "complete" ? (
+                          <span className="text-white font-bold">✓</span>
+                        ) : processingStage === "analyzing" ? (
+                          <div className="relative w-4 h-4">
+                            <div className="absolute inset-0 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
+                          </div>
+                        ) : processingStage === "transcribing" ? (
+                          <div className="flex gap-0.5 opacity-40">
+                            <div className="w-1 h-1 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "0ms", animationDuration: "2s" }}></div>
+                            <div className="w-1 h-1 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "400ms", animationDuration: "2s" }}></div>
+                            <div className="w-1 h-1 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "800ms", animationDuration: "2s" }}></div>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="text-left flex-1">
+                        <p className={`text-sm font-medium ${processingStage === "transcribing" ? "text-gray-400" : "text-gray-800"}`}>
+                          AI Analysis
+                        </p>
+                        <p className="text-xs text-gray-500">Understanding context and mood</p>
+                      </div>
+                    </div>
+
+                    {/* Step 3: Complete */}
+                    <div className="flex items-center gap-3 p-4 rounded-xl transition-all duration-300"
+                         style={{ backgroundColor: processingStage === "complete" ? "#E8F5E8" : "#F8F9FA" }}>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center relative" style={{
+                        backgroundColor: processingStage === "complete" ? "#B8D4B8" : "#E5E7EB"
+                      }}>
+                        {processingStage === "complete" ? (
+                          <span className="text-white font-bold animate-bounce">✓</span>
+                        ) : ["transcribing", "analyzing"].includes(processingStage) ? (
+                          <div className="flex gap-0.5 opacity-30">
+                            <div className="w-1 h-1 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "0ms", animationDuration: "3s" }}></div>
+                            <div className="w-1 h-1 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "600ms", animationDuration: "3s" }}></div>
+                            <div className="w-1 h-1 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "1200ms", animationDuration: "3s" }}></div>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="text-left flex-1">
+                        <p className={`text-sm font-medium ${["transcribing", "analyzing"].includes(processingStage) ? "text-gray-400" : "text-gray-800"}`}>
+                          Ready to View
+                        </p>
+                        <p className="text-xs text-gray-500">Your memory is prepared</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Encouraging message */}
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 border-l-4 border-blue-200">
+                    <p className="text-gray-600 text-sm italic" style={{ fontFamily: "Georgia, serif" }}>
+                      Taking time to understand what matters...
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -910,6 +1119,10 @@ export default function Component() {
                     <div className="space-y-3">
                       {sessionData.keyEvents.map((event, index) => {
                         const IconComponent = event.icon
+                        const fullTranscript = recordingResult?.transcript || ""
+                        const transcriptPreview = fullTranscript.substring(0, 150)
+                        const hasMore = fullTranscript.length > 150
+
                         return (
                           <div key={index} className="flex items-start gap-4 p-4 rounded-xl bg-gray-50">
                             <div className="flex-shrink-0 mt-1">
@@ -935,7 +1148,22 @@ export default function Component() {
                                 )}
                               </div>
                               <p className="text-gray-800 font-medium mb-1">{event.event}</p>
-                              <p className="text-gray-600 text-sm">{event.details}</p>
+
+                              {/* Expandable Transcript */}
+                              <div className="text-gray-600 text-sm">
+                                <p className="whitespace-pre-wrap">
+                                  {isTranscriptExpanded ? `Transcript: "${fullTranscript}"` : `Transcript: "${transcriptPreview}${hasMore ? '...' : ''}"`}
+                                </p>
+                                {hasMore && (
+                                  <button
+                                    onClick={() => setIsTranscriptExpanded(!isTranscriptExpanded)}
+                                    className="mt-2 text-xs font-medium hover:underline transition-colors"
+                                    style={{ color: "#8BAAAD" }}
+                                  >
+                                    {isTranscriptExpanded ? "Show less" : "Show more"}
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
                         )

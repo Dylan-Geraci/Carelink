@@ -1,7 +1,12 @@
 # /api/medication/extract, /api/medication/analyze, /api/medication/summarize
 
-from ..models import ExtractRequest, ExtractResponse, AnalyzeRequest, AnalyzeResponse, ChainSummarizeRequest, SummarizeResponse
-from .. import crud
+import sys
+import os
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, backend_dir)
+
+from models import ExtractRequest, ExtractResponse, AnalyzeRequest, AnalyzeResponse, ChainSummarizeRequest, SummarizeResponse
+import crud
 from fastapi import APIRouter, HTTPException, status
 import requests
 import json
@@ -34,11 +39,11 @@ def call_ollama_api(prompt: str) -> dict:
         response = requests.post(
             "http://localhost:11434/api/generate",
             json={
-                "model": "gemma3n:latest",
+                "model": "deepseek-v3.1:671b-cloud",
                 "prompt": prompt,
                 "stream": False
             },
-            timeout=60
+            timeout=180
         )
 
         if response.status_code != 200:

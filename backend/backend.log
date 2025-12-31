@@ -1,0 +1,62 @@
+INFO:     Started server process [11336]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:51179 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51325 - "GET /api/sessions?limit=100&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51326 - "GET /api/sessions?limit=100&offset=0 HTTP/1.1" 200 OK
+2025-12-23 12:24:51,954 - python_multipart.multipart - DEBUG - Calling on_part_begin with no data
+2025-12-23 12:24:51,957 - python_multipart.multipart - DEBUG - Calling on_header_field with data[42:61]
+2025-12-23 12:24:51,957 - python_multipart.multipart - DEBUG - Calling on_header_value with data[63:112]
+2025-12-23 12:24:51,957 - python_multipart.multipart - DEBUG - Calling on_header_end with no data
+2025-12-23 12:24:51,957 - python_multipart.multipart - DEBUG - Calling on_header_field with data[114:126]
+2025-12-23 12:24:51,957 - python_multipart.multipart - DEBUG - Calling on_header_value with data[128:138]
+2025-12-23 12:24:51,957 - python_multipart.multipart - DEBUG - Calling on_header_end with no data
+2025-12-23 12:24:51,957 - python_multipart.multipart - DEBUG - Calling on_headers_finished with no data
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_part_data with data[142:196386]
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_part_end with no data
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_part_begin with no data
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_header_field with data[196430:196449]
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_header_value with data[196451:196481]
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_header_end with no data
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_headers_finished with no data
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_part_data with data[196485:196493]
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_part_end with no data
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_part_begin with no data
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_header_field with data[196537:196556]
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_header_value with data[196558:196586]
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_header_end with no data
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_headers_finished with no data
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_part_data with data[196590:196605]
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_part_end with no data
+2025-12-23 12:24:51,958 - python_multipart.multipart - DEBUG - Calling on_end with no data
+Received file: recording.wav, Content-Type: audio/webm, Size: 196244
+2025-12-23 12:24:51,968 - routes.audio - INFO - Converting WebM to WAV format for file: recordings/session_20251223_122451_501dfc96.wav
+2025-12-23 12:24:52,688 - routes.audio - INFO - Successfully converted recordings/session_20251223_122451_501dfc96.wav to recordings/session_20251223_122451_501dfc96_converted.wav
+2025-12-23 12:24:52,688 - routes.audio - INFO - Starting transcription for file: recordings/session_20251223_122451_501dfc96_converted.wav
+2025-12-23 12:24:53,893 - routes.audio - INFO - Transcription completed. Length: 88, Content: 
+[00:00:00.000 --> 00:00:06.380]   Hey, this is CareLink Test 1 in a DirecTV interview.
+
+INFO:     127.0.0.1:51330 - "POST /api/record-audio HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51330 - "OPTIONS /api/process-session HTTP/1.1" 200 OK
+2025-12-23 12:24:53,915 - routes.audio - INFO - Processing session with data: {'transcript': '[00:00:00.000 --> 00:00:06.380]   Hey, this is CareLink Test 1 in a DirecTV interview.', 'metadata': {'session_id': 'session_20251223_122451_501dfc96', 'timestamp': '2025-12-23T12:24:53.894057', 'patient_id': 'default_patient', 'session_type': 'freeform', 'audio_file': 'session_20251223_122451_501dfc96_converted.wav'}}
+2025-12-23 12:24:53,915 - routes.audio - INFO - Extracted - transcript: [00:00:00.000 --> 00:00:06.380]   Hey, this is CareLink Test 1 in a DirecTV interview., session_id: session_20251223_122451_501dfc96, session_type: freeform
+2025-12-23 12:24:53,915 - routes.audio - INFO - Calling AI summarization for session session_20251223_122451_501dfc96
+2025-12-23 12:24:53,941 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): localhost:11434
+2025-12-23 12:24:59,170 - urllib3.connectionpool - DEBUG - http://localhost:11434 "POST /api/generate HTTP/1.1" 200 None
+2025-12-23 12:24:59,173 - routes.summarize - INFO - Raw response (first 200 chars): '```json\n{\n  "summary": "The transcript contains only a brief technical introduction indicating this is a test recording for a care platform, with no actual conversation with a dementia patient present'
+2025-12-23 12:24:59,173 - routes.summarize - INFO - After fence removal (first 200 chars): '{\n  "summary": "The transcript contains only a brief technical introduction indicating this is a test recording for a care platform, with no actual conversation with a dementia patient present.",\n  "t'
+2025-12-23 12:24:59,173 - routes.summarize - INFO - Extracted JSON (first 200 chars): '{\n  "summary": "The transcript contains only a brief technical introduction indicating this is a test recording for a care platform, with no actual conversation with a dementia patient present.",\n  "t'
+2025-12-23 12:24:59,173 - routes.audio - INFO - DEBUG - parsed_response type: <class 'dict'>
+2025-12-23 12:24:59,173 - routes.audio - INFO - DEBUG - parsed_response keys: dict_keys(['summary', 'repetition_json', 'agitation_score', 'mood_label', 'suggestions'])
+2025-12-23 12:24:59,174 - routes.audio - INFO - DEBUG - raw_summary type: <class 'str'>, first 200 chars: 'The transcript contains only a brief technical introduction indicating this is a test recording for a care platform, with no actual conversation with a dementia patient present.'
+2025-12-23 12:24:59,174 - routes.audio - INFO - DEBUG - clean_summary after cleanup, first 200 chars: 'The transcript contains only a brief technical introduction indicating this is a test recording for a care platform, with no actual conversation with a dementia patient present.'
+2025-12-23 12:24:59,174 - routes.audio - INFO - AI summarization successful for session session_20251223_122451_501dfc96
+2025-12-23 12:24:59,174 - routes.audio - INFO - Attempting to store analysis for session_id: session_20251223_122451_501dfc96
+2025-12-23 12:24:59,174 - routes.audio - INFO - DEBUG - About to store summary in DB, first 200 chars: 'The transcript contains only a brief technical introduction indicating this is a test recording for a care platform, with no actual conversation with a dementia patient present.'
+2025-12-23 12:24:59,177 - routes.audio - INFO - Successfully stored analysis for session_id: session_20251223_122451_501dfc96
+INFO:     127.0.0.1:51330 - "POST /api/process-session HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11336]

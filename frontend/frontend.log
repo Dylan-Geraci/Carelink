@@ -1,0 +1,18 @@
+
+> my-v0-project@0.1.0 dev /Users/amirr/Carelink-1/frontend
+> next dev
+
+   ▲ Next.js 15.2.4
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.1.236:3000
+
+ ✓ Starting...
+ ✓ Ready in 2.6s
+ ○ Compiling / ...
+ ✓ Compiled / in 3.2s (1633 modules)
+ GET / 200 in 3979ms
+ ✓ Compiled in 1547ms (777 modules)
+ GET / 200 in 128ms
+ ✓ Compiled /app in 482ms (1690 modules)
+ GET /app 200 in 557ms
+[?25h
