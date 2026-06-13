@@ -59,3 +59,7 @@ whisper.cpp/
 # Logs
 *.log
 backend/logs/
+
+# Claude Code
+CLAUDE.md
+.claude
