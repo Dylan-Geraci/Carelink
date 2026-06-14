@@ -37,9 +37,9 @@ def call_ollama_api(prompt: str) -> dict:
     """Call Ollama API for text generation."""
     try:
         response = requests.post(
-            "http://localhost:11434/api/generate",
+            os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate"),
             json={
-                "model": "deepseek-v3.1:671b-cloud",
+                "model": os.getenv("OLLAMA_MODEL", "gemma2:2b"),
                 "prompt": prompt,
                 "stream": False
             },
