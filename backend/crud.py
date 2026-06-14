@@ -176,11 +176,14 @@ def get_sessions_list(limit: int = 100, offset: int = 0) -> List[SessionListItem
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT 
-                s.session_id, 
-                s.session_type, 
+            SELECT
+                s.session_id,
+                s.session_type,
                 s.start_ts,
-                SUBSTR(sum.summary_text, 1, 100) as summary_snippet
+                s.end_ts,
+                SUBSTR(sum.summary_text, 1, 200) as summary_text,
+                sum.mood_label,
+                sum.agitation_score
             FROM sessions s
             LEFT JOIN summaries sum ON s.session_id = sum.session_id
             ORDER BY s.start_ts DESC
@@ -192,7 +195,10 @@ def get_sessions_list(limit: int = 100, offset: int = 0) -> List[SessionListItem
                 session_id=row["session_id"],
                 session_type=row["session_type"],
                 start_ts=row["start_ts"],
-                summary_snippet=row["summary_snippet"]
+                end_ts=row["end_ts"],
+                summary_text=row["summary_text"],
+                mood_label=row["mood_label"],
+                agitation_score=row["agitation_score"]
             )
             for row in cursor.fetchall()
         ]

@@ -116,7 +116,10 @@ class SessionListItem(BaseModel):
     session_id: str
     session_type: str
     start_ts: int
-    summary_snippet: Optional[str] = None
+    end_ts: Optional[int] = None
+    summary_text: Optional[str] = None
+    mood_label: Optional[str] = None
+    agitation_score: Optional[float] = None
 
 
 class SessionListResponse(BaseModel):

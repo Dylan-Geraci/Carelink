@@ -1,6 +1,18 @@
 // API client for Carelink backend
 const API_BASE_URL = 'http://localhost:8000/api'
 
+// Extract a useful message from a failed response. FastAPI returns
+// { detail: "..." } on errors; fall back to status text if absent.
+async function errorDetail(response: Response): Promise<string> {
+  try {
+    const body = await response.clone().json()
+    if (body?.detail) return String(body.detail)
+  } catch {
+    // response body was not JSON
+  }
+  return response.statusText || `HTTP ${response.status}`
+}
+
 // Types matching backend models
 export interface StartSessionRequest {
   session_type: string
@@ -99,7 +111,7 @@ export class CarelinkAPI {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to start session: ${response.statusText}`)
+      throw new Error(`Failed to start session: ${await errorDetail(response)}`)
     }
 
     return response.json()
@@ -109,7 +121,7 @@ export class CarelinkAPI {
     const response = await fetch(`${this.baseUrl}/sessions?limit=${limit}&offset=${offset}`)
     
     if (!response.ok) {
-      throw new Error(`Failed to get sessions: ${response.statusText}`)
+      throw new Error(`Failed to get sessions: ${await errorDetail(response)}`)
     }
 
     return response.json()
@@ -119,7 +131,7 @@ export class CarelinkAPI {
     const response = await fetch(`${this.baseUrl}/session/${sessionId}`)
     
     if (!response.ok) {
-      throw new Error(`Failed to get session: ${response.statusText}`)
+      throw new Error(`Failed to get session: ${await errorDetail(response)}`)
     }
 
     return response.json()
@@ -138,7 +150,7 @@ export class CarelinkAPI {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to record audio: ${response.statusText}`)
+      throw new Error(`Failed to record audio: ${await errorDetail(response)}`)
     }
 
     return response.json()
@@ -154,7 +166,7 @@ export class CarelinkAPI {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to process session: ${response.statusText}`)
+      throw new Error(`Failed to process session: ${await errorDetail(response)}`)
     }
 
     return response.json()
@@ -171,7 +183,7 @@ export class CarelinkAPI {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to transcribe audio: ${response.statusText}`)
+      throw new Error(`Failed to transcribe audio: ${await errorDetail(response)}`)
     }
 
     return response.json()
@@ -182,7 +194,7 @@ export class CarelinkAPI {
     const response = await fetch('http://localhost:8000/health')
     
     if (!response.ok) {
-      throw new Error(`Health check failed: ${response.statusText}`)
+      throw new Error(`Health check failed: ${await errorDetail(response)}`)
     }
 
     return response.json()

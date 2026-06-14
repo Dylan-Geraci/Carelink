@@ -24,6 +24,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Quiet noisy third-party DEBUG loggers. watchfiles is critical: with reload on,
+# it logs every file change at DEBUG, which the FileHandler writes to
+# carelink_debug.log -> modifies the watched file -> triggers another change ->
+# infinite loop. The rest (urllib3, multipart) are just verbose request spam.
+for _noisy in ("watchfiles", "watchfiles.main", "urllib3", "python_multipart"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 # Now import local modules
 
 
@@ -122,4 +129,13 @@ async def whisper_health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # reload requires the import-string form ("main:app"), not the app object.
+    # Enabled by default for local dev; set CARELINK_RELOAD=0 to disable.
+    reload = os.getenv("CARELINK_RELOAD", "1") != "0"
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=reload,
+        reload_excludes=["*.log"],
+    )
