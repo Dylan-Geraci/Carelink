@@ -107,6 +107,12 @@ export default function Component() {
   // Use the audio recording hook
   const audioRecording = useAudioRecording()
 
+  // Pending 30s auto-stop timer, and a re-entrancy guard so a double-tap (or the
+  // auto-stop firing alongside a manual stop) can't run the stop flow twice and
+  // clobber a successful recording with a spurious "No audio data recorded".
+  const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isStoppingRef = useRef(false)
+
   const affirmations = [
     "You are doing sacred work.",
     "Every act of care matters.",
@@ -399,21 +405,16 @@ export default function Component() {
 
     try {
       setRecordingError(null)
+      isStoppingRef.current = false // allow stopping this fresh recording
 
       // Start real audio recording
       await audioRecording.startRecording()
 
-      // Auto-stop recording after 30 seconds (configurable)
-      const recordingTimeout = setTimeout(async () => {
-        await handleStopRecording()
+      // Auto-stop recording after 30 seconds (configurable). Stored in a ref so a
+      // manual stop can cancel it (see handleStopRecording).
+      recordingTimeoutRef.current = setTimeout(() => {
+        handleStopRecording()
       }, 30000) // 30 second recording
-
-      // Clear timeout if user manually stops recording
-      audioRecording.state.isRecording && setTimeout(() => {
-        if (!audioRecording.state.isRecording) {
-          clearTimeout(recordingTimeout)
-        }
-      }, 100)
 
     } catch (error) {
       console.error('Failed to start recording:', error)
@@ -424,6 +425,17 @@ export default function Component() {
   const handleStopRecording = async () => {
     try {
       if (!selectedSessionType) return
+
+      // Guard against a second invocation (double-tap or the auto-stop timer
+      // racing a manual stop) overwriting the first, successful run.
+      if (isStoppingRef.current) return
+      isStoppingRef.current = true
+
+      // Cancel the pending 30s auto-stop now that we're stopping.
+      if (recordingTimeoutRef.current) {
+        clearTimeout(recordingTimeoutRef.current)
+        recordingTimeoutRef.current = null
+      }
 
       // Navigate to processing screen immediately
       setCurrentScreen("processing")
