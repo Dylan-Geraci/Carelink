@@ -1,18 +1,15 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from fastapi.responses import JSONResponse
 import os
-import tempfile
 import shutil
 from datetime import datetime
 import uuid
 import json
 import logging
 import traceback
-from typing import Optional
 
 # Import our existing functions
 import sys
-import os
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, backend_dir)
 

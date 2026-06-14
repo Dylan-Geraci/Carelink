@@ -7,7 +7,6 @@ import os
 import sys
 import subprocess
 import tempfile
-from typing import Optional
 from fastapi import HTTPException, status
 
 

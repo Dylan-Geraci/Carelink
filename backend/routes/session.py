@@ -2,12 +2,10 @@
 
 from models import (
     StartSessionRequest, StartSessionResponse,
-    StoreSessionRequest, SessionDetail, SessionListResponse,
-    SessionListItem
+    StoreSessionRequest, SessionDetail, SessionListResponse
 )
 import crud
 from fastapi import APIRouter, HTTPException, status
-from typing import List
 
 
 router = APIRouter(prefix="/api", tags=["sessions"])

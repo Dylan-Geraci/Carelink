@@ -3,7 +3,6 @@ from scipy.io.wavfile import write
 import os
 from datetime import datetime
 from transcribe import transcribe_audio
-import uuid
 import json
 
 # Settings for whisper.cpp

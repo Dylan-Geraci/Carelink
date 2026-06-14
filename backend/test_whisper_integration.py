@@ -7,7 +7,6 @@ This script tests the whisper_utils module and transcribe endpoint.
 import os
 import sys
 import requests
-import time
 
 # Add backend to path
 backend_dir = os.path.join(os.path.dirname(__file__), "backend")

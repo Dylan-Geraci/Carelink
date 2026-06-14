@@ -56,7 +56,7 @@ def ensure_whisper_built():
     for p in candidates:
         if os.path.isfile(p):
             return p
-    raise FileNotFoundError(f"No whisper binary found; looked at:\n" + "\n".join(candidates))
+    raise FileNotFoundError("No whisper binary found; looked at:\n" + "\n".join(candidates))
 
 def main():
     # 1) Download model if needed

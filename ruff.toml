@@ -1,0 +1,13 @@
+# Ruff configuration for the Python backend.
+# Docs: https://docs.astral.sh/ruff/
+target-version = "py38"
+extend-exclude = ["venv", "whisper.cpp", "whisper", ".pytest_cache", "__pycache__"]
+
+[lint]
+# Ruff defaults: pyflakes (F) + a curated subset of pycodestyle (E). Strong
+# signal, low noise (line-length E501 is off by default, which suits this repo).
+
+[lint.per-file-ignores]
+# These route modules intentionally insert the backend dir into sys.path before
+# importing local packages, so "module import not at top of file" is expected.
+"backend/routes/*.py" = ["E402"]
