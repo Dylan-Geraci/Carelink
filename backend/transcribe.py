@@ -2,20 +2,23 @@ from pathlib import Path
 import subprocess
 import sys
 
-WHISPER_BINARY = Path(__file__).parents[1] / "whisper.cpp" / "build" / "bin" / "whisper-cli"
-MODEL_PATH     = Path(__file__).parents[1] / "whisper.cpp" / "models" / "ggml-base.en.bin"
+# Resolve the whisper binary/model via the platform-aware helper so we have a
+# single source of truth. On Windows (MSVC) the binary lives at
+# whisper.cpp/build/bin/Release/whisper-cli.exe, not build/bin/whisper-cli.
+from whisper_utils import get_whisper_binary, get_model_path
 
 def transcribe_audio(audio_path: str) -> str:
     # Convert string path to Path object
     audio_path = Path(audio_path)
-    
+
     assert audio_path.exists(), f"File not found: {audio_path}"
-    assert WHISPER_BINARY.exists(), "Whisper binary not built!"
-    assert MODEL_PATH.exists(), "Model not downloaded!"
+
+    whisper_binary = get_whisper_binary()  # platform-aware; builds if missing
+    model_path = get_model_path()
 
     result = subprocess.run([
-        str(WHISPER_BINARY),
-        "-m", str(MODEL_PATH),
+        whisper_binary,
+        "-m", model_path,
         "-f", str(audio_path)
     ], capture_output=True, text=True)
 
