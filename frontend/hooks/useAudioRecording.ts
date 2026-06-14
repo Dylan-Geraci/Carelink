@@ -29,6 +29,24 @@ export function useAudioRecording(): UseAudioRecordingReturn {
   const streamRef = useRef<MediaStream | null>(null)
   const startTimeRef = useRef<number>(0)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const mimeTypeRef = useRef<string>('audio/webm')
+
+  // Pick a MIME type the current browser actually supports. Chrome prefers
+  // webm/opus; Safari only supports mp4. Returns '' to let the browser choose.
+  const pickSupportedMimeType = (): string => {
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/ogg;codecs=opus',
+    ]
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
+      for (const type of candidates) {
+        if (MediaRecorder.isTypeSupported(type)) return type
+      }
+    }
+    return ''
+  }
 
   const startRecording = useCallback(async () => {
     try {
@@ -46,10 +64,12 @@ export function useAudioRecording(): UseAudioRecordingReturn {
       streamRef.current = stream
       audioChunksRef.current = []
 
-      // Create MediaRecorder
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus' // Widely supported format
-      })
+      // Create MediaRecorder with a browser-supported MIME type.
+      const mimeType = pickSupportedMimeType()
+      mimeTypeRef.current = mimeType || 'audio/webm'
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream)
 
       mediaRecorderRef.current = mediaRecorder
 
@@ -125,7 +145,7 @@ export function useAudioRecording(): UseAudioRecordingReturn {
             console.error('No audio chunks available')
             setState(prev => ({
               ...prev,
-              error: 'No audio data recorded',
+              error: 'Recording too short or no microphone input — please record for at least a second.',
               isProcessing: false,
               isRecording: false,
             }))
@@ -133,15 +153,15 @@ export function useAudioRecording(): UseAudioRecordingReturn {
             return
           }
 
-          // Create audio blob from chunks
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-          console.log('Created blob with size:', audioBlob.size)
+          // Create audio blob from chunks, using the negotiated MIME type.
+          const audioBlob = new Blob(audioChunksRef.current, { type: mimeTypeRef.current })
+          console.log('Created blob with size:', audioBlob.size, 'type:', mimeTypeRef.current)
 
           if (audioBlob.size === 0) {
             console.error('Audio blob is empty')
             setState(prev => ({
               ...prev,
-              error: 'No audio data recorded',
+              error: 'Recording too short or no microphone input — please record for at least a second.',
               isProcessing: false,
               isRecording: false,
             }))
@@ -180,10 +200,11 @@ export function useAudioRecording(): UseAudioRecordingReturn {
       // Request data before stopping to ensure we have chunks
       if (mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.requestData()
-        // Small delay to ensure data is collected before stopping
+        // Give the encoder time to flush a frame before stopping. Too short a
+        // delay on a brief recording yields zero chunks -> "no audio data".
         setTimeout(() => {
           mediaRecorderRef.current?.stop()
-        }, 100)
+        }, 300)
       } else {
         // Stop recording immediately if not in recording state
         mediaRecorderRef.current.stop()

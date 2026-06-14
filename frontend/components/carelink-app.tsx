@@ -1231,7 +1231,9 @@ export default function Component() {
                         backgroundImage:
                           "repeating-linear-gradient(transparent, transparent 1.5rem, #E8E6E3 1.5rem, #E8E6E3 calc(1.5rem + 1px))",
                         lineHeight: "1.5rem",
-                        paddingTop: "0.75rem",
+                        // No vertical offset: text line-height matches the rule spacing,
+                        // so each line of text sits just above its rule instead of on it.
+                        paddingTop: "0",
                       }}
                     />
                   </div>
