@@ -24,6 +24,7 @@ import {
   TrendingUp,
   Sparkles,
   X,
+  type LucideIcon,
 } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
@@ -281,6 +282,16 @@ export default function Component() {
     },
   ]
 
+  // Shape of a timeline entry. `repetition` is optional (badge shown only when
+  // an analysis surfaces a repeated topic; not yet populated by the backend).
+  type KeyEvent = {
+    time: string
+    event: string
+    icon: LucideIcon
+    details: string
+    repetition?: number
+  }
+
   // Generate dynamic session data based on recording and analysis results
   const getSessionData = () => {
     const baseData = {
@@ -306,9 +317,9 @@ export default function Component() {
             time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
             event: `${selectedSessionType} session completed with AI analysis`,
             icon: selectedSessionType === 'medication' ? Pill : selectedSessionType === 'sundowning' ? Sunset : FileText,
-            details: `Transcript: "${recordingResult?.transcript?.substring(0, 100)}${recordingResult?.transcript?.length > 100 ? '...' : ''}"`,
+            details: `Transcript: "${recordingResult?.transcript?.substring(0, 100)}${(recordingResult?.transcript?.length ?? 0) > 100 ? '...' : ''}"`,
           },
-        ],
+        ] as KeyEvent[],
         aiSummary: analysisResult.analysis.summary || "AI analysis completed",
         tags: analysisResult.analysis.tags || ["completed"],
         suggestions: analysisResult.analysis.suggestions || [],
@@ -327,7 +338,7 @@ export default function Component() {
             icon: selectedSessionType === 'medication' ? Pill : selectedSessionType === 'sundowning' ? Sunset : FileText,
             details: `Transcript: "${recordingResult.transcript.substring(0, 100)}${recordingResult.transcript.length > 100 ? '...' : ''}"`,
           },
-        ],
+        ] as KeyEvent[],
         aiSummary: "Recording completed successfully. Running AI analysis...",
         tags: ["recorded", "analyzing"],
       }
@@ -344,7 +355,7 @@ export default function Component() {
             icon: selectedSessionType === 'medication' ? Pill : selectedSessionType === 'sundowning' ? Sunset : FileText,
             details: audioRecording.state.isRecording ? "Listening to your voice..." : "Session starting...",
           },
-        ],
+        ] as KeyEvent[],
         aiSummary: audioRecording.state.isRecording ? "Recording your session..." : "Preparing to capture this moment...",
         tags: ["recording"],
       }
