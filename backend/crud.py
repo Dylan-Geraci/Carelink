@@ -203,6 +203,46 @@ def get_sessions_list(limit: int = 100, offset: int = 0) -> List[SessionListItem
         ]
 
 
+def get_report_sessions(from_ts: Optional[int] = None,
+                        to_ts: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Sessions joined with full summary fields for PDF report export.
+
+    Ordered oldest -> newest (chronological, the natural reading order for a
+    care report). Optional epoch-ms range filters on session start time.
+    Returns plain dicts because this feeds the internal report builder, not an
+    exposed JSON contract.
+    """
+    query = """
+        SELECT
+            s.session_id,
+            s.session_type,
+            s.start_ts,
+            sum.summary_text,
+            sum.mood_label,
+            sum.agitation_score,
+            sum.suggestions,
+            sum.repetition_json
+        FROM sessions s
+        LEFT JOIN summaries sum ON s.session_id = sum.session_id
+    """
+    conditions = []
+    params: List[Any] = []
+    if from_ts is not None:
+        conditions.append("s.start_ts >= ?")
+        params.append(from_ts)
+    if to_ts is not None:
+        conditions.append("s.start_ts <= ?")
+        params.append(to_ts)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY s.start_ts ASC"
+
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+
 def delete_session(session_id: str) -> bool:
     """Delete a session (cascades to related tables)."""
     with db_cursor() as cursor:

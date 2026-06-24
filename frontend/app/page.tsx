@@ -70,54 +70,56 @@ const howItWorksSteps = [
   },
 ]
 
+// Two tones carry meaning, not decoration: `emerald` = what you capture,
+// `teal` = what Carelink gives back. Ordered so wide+narrow tiles each row of 3.
 const bentoFeatures = [
   {
+    key: "journaling",
     title: "Smart journaling",
-    description: "AI-guided prompts that adapt to your loved one's unique care needs",
+    description: "Guided prompts adapt to your loved one's needs, so the right question is always waiting for you.",
     icon: BookOpen,
-    gradient: "from-emerald-500/20 to-teal-500/20",
-    iconColor: "text-emerald-600",
-    size: "large",
+    tone: "emerald",
+    span: "wide",
   },
   {
+    key: "voice",
     title: "Voice capture",
-    description: "Record and transcribe observations hands-free",
+    description: "Speak your observations; we transcribe them hands-free.",
     icon: Mic,
-    gradient: "from-blue-500/20 to-cyan-500/20",
-    iconColor: "text-blue-600",
-    size: "small",
+    tone: "emerald",
+    span: "narrow",
   },
   {
+    key: "trends",
     title: "Trend analysis",
-    description: "Visual timelines of medication, mood, and behaviors",
+    description: "Watch mood, medication, and behavior shift over time.",
     icon: BarChart3,
-    gradient: "from-violet-500/20 to-purple-500/20",
-    iconColor: "text-violet-600",
-    size: "small",
+    tone: "teal",
+    span: "narrow",
   },
   {
+    key: "team",
     title: "Team collaboration",
-    description: "Invite family, aides, and clinicians to shared care records",
+    description: "Bring family, aides, and clinicians into one shared record, with the right access for each.",
     icon: Users,
-    gradient: "from-pink-500/20 to-rose-500/20",
-    iconColor: "text-pink-600",
-    size: "medium",
+    tone: "emerald",
+    span: "wide",
   },
   {
+    key: "reminders",
     title: "Smart reminders",
-    description: "Never miss medication or appointment times",
+    description: "Stay ahead of every medication and appointment, right on schedule.",
     icon: Bell,
-    gradient: "from-amber-500/20 to-orange-500/20",
-    iconColor: "text-amber-600",
-    size: "small",
+    tone: "teal",
+    span: "wide",
   },
   {
+    key: "export",
     title: "Export reports",
-    description: "Generate professional summaries for medical visits",
+    description: "Turn weeks of notes into a clean summary for any visit.",
     icon: FileCheck,
-    gradient: "from-indigo-500/20 to-blue-500/20",
-    iconColor: "text-indigo-600",
-    size: "small",
+    tone: "teal",
+    span: "narrow",
   },
 ]
 
@@ -188,6 +190,72 @@ const faqs = [
       "Yes. Invite trusted collaborators with role-based permissions so everyone stays aligned without overwhelming notifications.",
   },
 ]
+
+// A small, real artifact for each capability: show the product, don't describe it.
+function FeatureArtifact({ id }: { id: string }) {
+  switch (id) {
+    case "journaling":
+      return (
+        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm text-emerald-800 ring-1 ring-emerald-100">
+          <Sparkles className="h-4 w-4 shrink-0 text-emerald-500" />
+          <span className="italic">&ldquo;Did anything bring a moment of joy today?&rdquo;</span>
+        </div>
+      )
+    case "voice":
+      return (
+        <div className="flex h-10 items-center gap-1" aria-hidden>
+          {[6, 12, 8, 17, 11, 21, 14, 9, 16, 7, 13].map((h, i) => (
+            <span key={i} className="w-1 rounded-full bg-emerald-300" style={{ height: h }} />
+          ))}
+        </div>
+      )
+    case "trends":
+      return (
+        <div className="flex h-12 items-end gap-1.5" aria-hidden>
+          {[45, 70, 55, 85, 60, 95, 72].map((h, i) => (
+            <span key={i} className="w-2 flex-1 rounded-sm bg-teal-200" style={{ height: `${h}%` }} />
+          ))}
+        </div>
+      )
+    case "team":
+      return (
+        <div className="flex items-center gap-3">
+          <div className="flex -space-x-2">
+            {["MR", "JD", "AK"].map((initials) => (
+              <div
+                key={initials}
+                className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-emerald-100 text-xs font-semibold text-emerald-700"
+              >
+                {initials}
+              </div>
+            ))}
+            <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-xs font-medium text-slate-500">
+              +4
+            </div>
+          </div>
+          <span className="text-sm text-slate-500">family, aides &amp; clinicians</span>
+        </div>
+      )
+    case "reminders":
+      return (
+        <div className="inline-flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-2.5 text-sm">
+          <Clock className="h-4 w-4 shrink-0 text-teal-600" />
+          <span className="font-medium text-slate-900">Donepezil</span>
+          <span className="text-slate-300">·</span>
+          <span className="text-slate-500">8:00 PM</span>
+        </div>
+      )
+    case "export":
+      return (
+        <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-600">
+          <FileText className="h-4 w-4 shrink-0 text-teal-600" />
+          Weekly-care-summary.pdf
+        </div>
+      )
+    default:
+      return null
+  }
+}
 
 export default function Page() {
   const [heroRef, heroInView] = useInView({ threshold: 0.1, triggerOnce: true })
@@ -485,7 +553,7 @@ export default function Page() {
               className="mb-16 max-w-3xl"
             >
               <Badge variant="outline" className="mb-4 border-slate-300 text-slate-600">
-                PLATFORM CAPABILITIES
+                WHAT'S INSIDE
               </Badge>
               <h2 className="text-4xl font-bold tracking-tight text-slate-900 md:text-5xl">
                 Everything you need in one elegant workspace
@@ -495,35 +563,34 @@ export default function Page() {
               </p>
             </motion.div>
 
-            {/* Bento Grid */}
-            <div className="grid auto-rows-[280px] grid-cols-1 gap-6 md:grid-cols-3">
+            {/* Capability grid — 3 wide + 3 narrow cards tile each row cleanly, no empty cells */}
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
               {bentoFeatures.map((feature, index) => {
                 const Icon = feature.icon
-                const colSpan = feature.size === "large" ? "md:col-span-2" : feature.size === "medium" ? "md:col-span-2 md:row-span-1" : "md:col-span-1"
-                const rowSpan = feature.size === "large" ? "md:row-span-2" : ""
+                const span = feature.span === "wide" ? "md:col-span-2" : "md:col-span-1"
+                const iconWrap =
+                  feature.tone === "teal"
+                    ? "bg-teal-50 text-teal-600 ring-teal-100"
+                    : "bg-emerald-50 text-emerald-600 ring-emerald-100"
 
                 return (
                   <motion.div
-                    key={feature.title}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    whileInView={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: index * 0.1 }}
+                    key={feature.key}
+                    initial={{ opacity: 0, y: 16 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: index * 0.08 }}
                     viewport={{ once: true }}
-                    className={`group relative overflow-hidden rounded-3xl border-2 border-slate-200 bg-gradient-to-br from-white to-slate-50/50 p-8 shadow-lg transition-all hover:border-slate-300 hover:shadow-xl ${colSpan} ${rowSpan}`}
+                    className={`group flex flex-col rounded-3xl border border-slate-200/80 bg-white p-7 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md ${span}`}
                   >
-                    <div className={`absolute right-0 top-0 h-40 w-40 rounded-full bg-gradient-to-br ${feature.gradient} opacity-0 blur-3xl transition-opacity group-hover:opacity-100`} />
+                    <div className={`inline-flex h-12 w-12 items-center justify-center rounded-xl ring-1 ${iconWrap}`}>
+                      <Icon className="h-6 w-6" />
+                    </div>
 
-                    <div className="relative flex h-full flex-col justify-between">
-                      <div>
-                        <div className={`mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${feature.gradient}`}>
-                          <Icon className={`h-8 w-8 ${feature.iconColor}`} />
-                        </div>
+                    <h3 className="mt-5 text-xl font-semibold text-slate-900">{feature.title}</h3>
+                    <p className="mt-2 leading-relaxed text-slate-600">{feature.description}</p>
 
-                        <h3 className="mb-3 text-2xl font-bold text-slate-900">{feature.title}</h3>
-                        <p className="text-slate-600">{feature.description}</p>
-                      </div>
-
-                      <ChevronRight className="h-6 w-6 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100" />
+                    <div className="mt-auto pt-6">
+                      <FeatureArtifact id={feature.key} />
                     </div>
                   </motion.div>
                 )

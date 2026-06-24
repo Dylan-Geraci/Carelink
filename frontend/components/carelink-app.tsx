@@ -24,6 +24,7 @@ import {
   TrendingUp,
   Sparkles,
   X,
+  Download,
   type LucideIcon,
 } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -103,6 +104,8 @@ export default function Component() {
   const [recordingError, setRecordingError] = useState<string | null>(null)
   const [processingStage, setProcessingStage] = useState<ProcessingStage>("transcribing")
   const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   // Use the audio recording hook
   const audioRecording = useAudioRecording()
@@ -146,6 +149,27 @@ export default function Component() {
 
     loadSessions()
   }, [])
+
+  // Generate a care-summary PDF and trigger a browser download.
+  const handleExportReport = async () => {
+    try {
+      setExportError(null)
+      setIsExporting(true)
+      const blob = await api.exportReport()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `carelink-care-report-${new Date().toISOString().slice(0, 10)}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Could not export the report.")
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   // Show weekly highlights after 3 seconds on home screen
   useEffect(() => {
@@ -583,8 +607,7 @@ export default function Component() {
 
                 <Button
                   onClick={() => setShowWeeklyHighlights(false)}
-                  className="w-full rounded-full"
-                  style={{ backgroundColor: "#8BAAAD", color: "white" }}
+                  className="w-full rounded-full bg-[#9CC0C3] text-white font-semibold tracking-wide shadow-md transition-all duration-200 hover:bg-[#8BAAAD] hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99]"
                 >
                   Continue Your Journey
                 </Button>
@@ -630,6 +653,20 @@ export default function Component() {
                       </Badge>
                       <p className="text-sm text-gray-400 font-medium">{new Date().toLocaleDateString('en-US', { weekday: 'long' })}</p>
                       <p className="text-2xl font-light text-gray-700">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</p>
+
+                      <Button
+                        onClick={handleExportReport}
+                        disabled={isExporting}
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 rounded-full border-[#8BAAAD] text-[#546A7B] transition-colors hover:bg-[#8BAAAD] hover:text-white disabled:opacity-60"
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        {isExporting ? "Preparing PDF…" : "Export care report"}
+                      </Button>
+                      {exportError && (
+                        <p className="mt-2 max-w-[16rem] text-xs text-red-500">{exportError}</p>
+                      )}
                     </div>
                   </div>
                 </div>

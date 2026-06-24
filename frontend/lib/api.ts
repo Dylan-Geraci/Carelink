@@ -189,6 +189,22 @@ export class CarelinkAPI {
     return response.json()
   }
 
+  // Export a care-summary PDF over an optional epoch-ms range. Returns the
+  // raw PDF as a Blob; the caller triggers the browser download.
+  async exportReport(fromTs?: number, toTs?: number): Promise<Blob> {
+    const qs = new URLSearchParams()
+    if (fromTs) qs.set('from_ts', String(fromTs))
+    if (toTs) qs.set('to_ts', String(toTs))
+    const query = qs.toString()
+    const response = await fetch(`${this.baseUrl}/export/report${query ? `?${query}` : ''}`)
+
+    if (!response.ok) {
+      throw new Error(`Failed to export report: ${await errorDetail(response)}`)
+    }
+
+    return response.blob()
+  }
+
   // Health check
   async healthCheck(): Promise<{ status: string; database: string }> {
     const response = await fetch('http://localhost:8000/health')
