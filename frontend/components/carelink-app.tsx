@@ -237,19 +237,31 @@ export default function Component() {
           borderColor: getSessionBorderColor(session.session_type),
         }))
       },
-      ...olderSessions.slice(0, 5).map(session => ({
-        date: new Date(session.start_ts).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
-        fullDate: new Date(session.start_ts).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
-        sessions: [{
-          id: session.session_id,
-          type: session.session_type,
-          time: new Date(session.start_ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
-          summary: session.summary_text || "No summary available",
-          icon: getSessionIcon(session.session_type),
-          color: getSessionColor(session.session_type),
-          borderColor: getSessionBorderColor(session.session_type),
-        }]
-      }))
+      // Group older sessions by calendar day (one group per day, not per session),
+      // otherwise two sessions on the same date produce duplicate React keys.
+      ...Object.values(
+        olderSessions.reduce((groups, session) => {
+          const sessionDate = new Date(session.start_ts)
+          const key = sessionDate.toDateString()
+          if (!groups[key]) {
+            groups[key] = {
+              date: sessionDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
+              fullDate: sessionDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
+              sessions: [],
+            }
+          }
+          groups[key].sessions.push({
+            id: session.session_id,
+            type: session.session_type,
+            time: sessionDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+            summary: session.summary_text || "No summary available",
+            icon: getSessionIcon(session.session_type),
+            color: getSessionColor(session.session_type),
+            borderColor: getSessionBorderColor(session.session_type),
+          })
+          return groups
+        }, {} as Record<string, { date: string; fullDate: string; sessions: Array<{ id: string; type: string; time: string; summary: string; icon: string; color: string; borderColor: string }> }>)
+      )
     ]
   }
 
