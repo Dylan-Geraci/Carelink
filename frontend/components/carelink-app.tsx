@@ -8,6 +8,21 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import {
   Plus,
   Clock,
   Heart,
@@ -106,6 +121,9 @@ export default function Component() {
   const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [customRangeOpen, setCustomRangeOpen] = useState(false)
+  const [customStart, setCustomStart] = useState("")
+  const [customEnd, setCustomEnd] = useState("")
 
   // Use the audio recording hook
   const audioRecording = useAudioRecording()
@@ -150,12 +168,12 @@ export default function Component() {
     loadSessions()
   }, [])
 
-  // Generate a care-summary PDF and trigger a browser download.
-  const handleExportReport = async () => {
+  // Generate a care-summary PDF for an optional epoch-ms range and download it.
+  const handleExportReport = async (fromTs?: number, toTs?: number) => {
     try {
       setExportError(null)
       setIsExporting(true)
-      const blob = await api.exportReport()
+      const blob = await api.exportReport(fromTs, toTs)
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
@@ -169,6 +187,48 @@ export default function Component() {
     } finally {
       setIsExporting(false)
     }
+  }
+
+  // Quick-pick export ranges, each labelled with the actual dates it covers (end = today).
+  const getExportPresets = () => {
+    const now = new Date()
+    const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+
+    const week = new Date(now)
+    week.setHours(0, 0, 0, 0)
+    week.setDate(week.getDate() - week.getDay()) // back to Sunday
+    const month = new Date(now.getFullYear(), now.getMonth(), 1)
+    const days30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+    return [
+      { key: "week", title: "This week", fromTs: week.getTime() as number | undefined, range: `${fmt(week)} – ${fmt(now)}` },
+      { key: "month", title: "This month", fromTs: month.getTime() as number | undefined, range: `${fmt(month)} – ${fmt(now)}` },
+      { key: "days30", title: "Last 30 days", fromTs: days30.getTime() as number | undefined, range: `${fmt(days30)} – ${fmt(now)}` },
+      { key: "all", title: "All time", fromTs: undefined as number | undefined, range: "All sessions" },
+    ]
+  }
+
+  // Export with a user-picked from/to range (yyyy-mm-dd, parsed in local time).
+  const handleCustomExport = () => {
+    if (!customStart || !customEnd) {
+      setExportError("Pick both a start and end date.")
+      return
+    }
+    const toLocalMs = (value: string, endOfDay: boolean) => {
+      const [y, m, d] = value.split("-").map(Number)
+      return endOfDay
+        ? new Date(y, m - 1, d, 23, 59, 59, 999).getTime()
+        : new Date(y, m - 1, d, 0, 0, 0, 0).getTime()
+    }
+    const fromTs = toLocalMs(customStart, false)
+    const toTs = toLocalMs(customEnd, true)
+    if (fromTs > toTs) {
+      setExportError("The start date must be on or before the end date.")
+      return
+    }
+    setExportError(null)
+    setCustomRangeOpen(false)
+    handleExportReport(fromTs, toTs)
   }
 
   // Show weekly highlights after 3 seconds on home screen
@@ -654,19 +714,87 @@ export default function Component() {
                       <p className="text-sm text-gray-400 font-medium">{new Date().toLocaleDateString('en-US', { weekday: 'long' })}</p>
                       <p className="text-2xl font-light text-gray-700">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</p>
 
-                      <Button
-                        onClick={handleExportReport}
-                        disabled={isExporting}
-                        variant="outline"
-                        size="sm"
-                        className="mt-3 rounded-full border-[#8BAAAD] text-[#546A7B] transition-colors hover:bg-[#8BAAAD] hover:text-white disabled:opacity-60"
-                      >
-                        <Download className="mr-2 h-4 w-4" />
-                        {isExporting ? "Preparing PDF…" : "Export care report"}
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            disabled={isExporting}
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 rounded-full border-[#8BAAAD] text-[#546A7B] transition-colors hover:bg-[#8BAAAD] hover:text-white disabled:opacity-60"
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            {isExporting ? "Preparing PDF…" : "Export care report"}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          {getExportPresets().map((p) => (
+                            <DropdownMenuItem
+                              key={p.key}
+                              onClick={() => handleExportReport(p.fromTs, undefined)}
+                              className="flex cursor-pointer flex-col items-start gap-0.5 focus:bg-[#8BAAAD]/15 hover:bg-[#8BAAAD]/15"
+                            >
+                              <span className="text-sm text-gray-800">{p.title}</span>
+                              <span className="text-xs text-gray-400">{p.range}</span>
+                            </DropdownMenuItem>
+                          ))}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setExportError(null)
+                              setCustomRangeOpen(true)
+                            }}
+                            className="cursor-pointer focus:bg-[#8BAAAD]/15 hover:bg-[#8BAAAD]/15"
+                          >
+                            Custom range…
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       {exportError && (
                         <p className="mt-2 max-w-[16rem] text-xs text-red-500">{exportError}</p>
                       )}
+
+                      <Dialog open={customRangeOpen} onOpenChange={setCustomRangeOpen}>
+                        <DialogContent className="sm:max-w-sm">
+                          <DialogHeader>
+                            <DialogTitle>Custom date range</DialogTitle>
+                            <DialogDescription>
+                              Choose the period to include in the care report.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="grid gap-4 py-2 text-left">
+                            <label className="grid gap-1 text-sm">
+                              <span className="font-medium text-gray-600">From</span>
+                              <input
+                                type="date"
+                                value={customStart}
+                                max={customEnd || undefined}
+                                onChange={(e) => setCustomStart(e.target.value)}
+                                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-[#8BAAAD] focus:outline-none"
+                              />
+                            </label>
+                            <label className="grid gap-1 text-sm">
+                              <span className="font-medium text-gray-600">To</span>
+                              <input
+                                type="date"
+                                value={customEnd}
+                                min={customStart || undefined}
+                                onChange={(e) => setCustomEnd(e.target.value)}
+                                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-[#8BAAAD] focus:outline-none"
+                              />
+                            </label>
+                          </div>
+                          <DialogFooter>
+                            <Button
+                              onClick={handleCustomExport}
+                              className="rounded-full"
+                              style={{ backgroundColor: "#546A7B", color: "white" }}
+                            >
+                              <Download className="mr-2 h-4 w-4" />
+                              Export PDF
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   </div>
                 </div>
