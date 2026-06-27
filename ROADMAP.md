@@ -31,8 +31,11 @@ Aggregate `summaries` (agitation, mood, repetition) over time.
 - [x] Backend aggregation endpoint: `GET /api/trends?from_ts&to_ts` → `TrendsResponse`
       (weekly avg agitation, mood distribution, top repeated phrase, derived calm label).
       `crud.get_trend_sessions()` → `trends.compute_trends()` → `routes/trends.py`.
-- [x] Render charts in the home "insights" panel using `recharts` (weekly agitation line +
-      mood-mix bars + most-repeated phrase) — `InsightsPanel` in `carelink-app.tsx`.
+- [x] Render charts in the home "insights" panel using `recharts` — `InsightsPanel`
+      (`components/insights-panel.tsx`): "emotional weather" gradient area chart, a mood ribbon,
+      and the most-repeated phrase as a serif quote, all cohesive with the journal aesthetic.
+- [x] Fix `routes/audio.py` to persist `repetition_json` on summary insert (it was dropped),
+      so the "Heard often" insight actually populates for new sessions.
 - [x] Replace the hardcoded "This Week's Highlights" modal with real numbers (this-week
       `getTrends(weekStart)`), and the hardcoded "Overall Calm This Week" badge with the
       derived `calm_label`.

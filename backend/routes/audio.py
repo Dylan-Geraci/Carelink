@@ -217,13 +217,16 @@ async def process_session(request_data: dict):
             try:
                 cursor.execute(
                     """INSERT OR REPLACE INTO summaries (session_id, summary_text, mood_label,
-                       agitation_score, suggestions, created_ts)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
+                       agitation_score, repetition_json, suggestions, created_ts)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (
                         session_id,
                         summary_to_store,
                         analysis_result.get("mood_label", ""),
                         analysis_result.get("agitation_score", 0),
+                        # parse_gemma_response yields a list; store as JSON text so
+                        # trends/report (which json.loads it) get a valid array.
+                        json.dumps(analysis_result.get("repetition_json") or []),
                         json.dumps(analysis_result.get("suggestions", [])),
                         int(datetime.now().timestamp() * 1000)
                     )
