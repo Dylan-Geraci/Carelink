@@ -92,6 +92,30 @@ export interface SessionDetail {
   suggestions?: string
 }
 
+// Trend analysis (M2) — must stay in sync with backend/models.py
+export interface TrendPoint {
+  week_start_ts: number
+  session_count: number
+  avg_agitation?: number | null
+}
+
+export interface MoodSlice {
+  mood_label: string
+  count: number
+}
+
+export interface TrendsResponse {
+  from_ts?: number | null
+  to_ts?: number | null
+  total_sessions: number
+  avg_agitation?: number | null
+  calm_label: string
+  mood_distribution: MoodSlice[]
+  top_phrase?: string | null
+  top_phrase_count: number
+  weekly: TrendPoint[]
+}
+
 // API client functions
 export class CarelinkAPI {
   private baseUrl: string
@@ -203,6 +227,21 @@ export class CarelinkAPI {
     }
 
     return response.blob()
+  }
+
+  // Aggregated mood/agitation/repetition trends over an optional epoch-ms range.
+  async getTrends(fromTs?: number, toTs?: number): Promise<TrendsResponse> {
+    const qs = new URLSearchParams()
+    if (fromTs) qs.set('from_ts', String(fromTs))
+    if (toTs) qs.set('to_ts', String(toTs))
+    const query = qs.toString()
+    const response = await fetch(`${this.baseUrl}/trends${query ? `?${query}` : ''}`)
+
+    if (!response.ok) {
+      throw new Error(`Failed to get trends: ${await errorDetail(response)}`)
+    }
+
+    return response.json()
   }
 
   // Health check

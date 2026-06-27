@@ -22,12 +22,20 @@ Downloadable, professional care summary for medical visits.
 - [x] `frontend/lib/api.ts`: `exportReport()` returning a Blob.
 - [x] `frontend/components/carelink-app.tsx`: real "Export care report" button + download.
 
-### M2 — Trend analysis
+### M2 — Trend analysis ✅ done (2026-06-27)
 Aggregate `summaries` (agitation, mood, repetition) over time.
-- [ ] Populate/read the existing-but-unused `trend_cache` table (`db/schema.sql`).
-- [ ] Backend aggregation endpoint (mood/agitation/repetition by week).
-- [ ] Render charts in the empty home "insights" panel using `recharts` (already a dependency).
-- [ ] Replace the hardcoded "This Week's Highlights" modal with real numbers.
+- [x] ~~Populate/read the existing-but-unused `trend_cache` table~~ — **deliberately skipped.**
+      Aggregation is computed on the fly in `backend/trends.py`; for a local single-user
+      SQLite DB the cost is negligible and live computation can never go stale. `trend_cache`
+      remains unused (a future optimization only if data volume ever warrants it).
+- [x] Backend aggregation endpoint: `GET /api/trends?from_ts&to_ts` → `TrendsResponse`
+      (weekly avg agitation, mood distribution, top repeated phrase, derived calm label).
+      `crud.get_trend_sessions()` → `trends.compute_trends()` → `routes/trends.py`.
+- [x] Render charts in the home "insights" panel using `recharts` (weekly agitation line +
+      mood-mix bars + most-repeated phrase) — `InsightsPanel` in `carelink-app.tsx`.
+- [x] Replace the hardcoded "This Week's Highlights" modal with real numbers (this-week
+      `getTrends(weekStart)`), and the hardcoded "Overall Calm This Week" badge with the
+      derived `calm_label`.
 
 ### M3 — Smart reminders
 Medication / appointment scheduling + reminders.
@@ -45,4 +53,4 @@ Multiple caregivers, shared records, role-based access.
 - [ ] Save the session reflection note (currently discarded in `handleSaveAndContinue`).
 - [ ] Wire session-detail view — `api.getSession()` exists but is never called (cards open nothing).
 - [ ] Make "Edit Summary" / "Add Tags" buttons functional (currently no handlers).
-- [ ] Stop hardcoding home-screen "insights" ("Overall Calm This Week" badge, Highlights modal).
+- [x] Stop hardcoding home-screen "insights" ("Overall Calm This Week" badge, Highlights modal) — done in M2.

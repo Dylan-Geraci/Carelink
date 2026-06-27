@@ -1,7 +1,16 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { api, SessionListItem, RecordAudioResponse, ProcessSessionResponse } from "@/lib/api"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { api, SessionListItem, RecordAudioResponse, ProcessSessionResponse, TrendsResponse } from "@/lib/api"
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+} from "recharts"
 import { useAudioRecording } from "@/hooks/useAudioRecording"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -105,6 +114,148 @@ const AudioWaveform = ({ isListening, isRecording }: { isListening: boolean; isR
   )
 }
 
+// Map a free-text mood label (LLM output) to a stable accent color.
+const moodColor = (mood: string): string => {
+  const m = mood.toLowerCase()
+  if (/(calm|content|happy|peace|relax|warm|engaged)/.test(m)) return "#8BAAAD"
+  if (/(anx|agitat|upset|distress|angry|frustrat|restless)/.test(m)) return "#E2A2A2"
+  if (/(sad|low|tear|withdraw|lonely)/.test(m)) return "#A9B7D0"
+  return "#C9B8E0"
+}
+
+// Badge colors for the at-a-glance weekly calm label.
+const calmBadgeStyle = (label: string): { backgroundColor: string; color: string } => {
+  switch (label) {
+    case "Calm":
+      return { backgroundColor: "#E8F5E8", color: "#2D5016" }
+    case "Mixed":
+      return { backgroundColor: "#FBEFD9", color: "#7A5A1E" }
+    case "Elevated":
+      return { backgroundColor: "#FBE3E3", color: "#8A2D2D" }
+    default:
+      return { backgroundColor: "#EEF1F2", color: "#546A7B" }
+  }
+}
+
+// Right-hand "insights" panel: real weekly agitation trend + mood mix (M2).
+// Replaces the former "Space for insights" placeholder.
+const InsightsPanel = ({ trends, isLoading }: { trends: TrendsResponse | null; isLoading: boolean }) => {
+  if (isLoading) {
+    return (
+      <div className="p-6 rounded-2xl bg-white/50 backdrop-blur-sm border border-gray-100">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-300 mx-auto" />
+      </div>
+    )
+  }
+
+  if (!trends || trends.total_sessions === 0) {
+    return (
+      <div className="p-6 rounded-2xl bg-white/50 backdrop-blur-sm border border-gray-100">
+        <p className="text-gray-400 text-sm text-center italic">
+          Insights appear here once you&apos;ve recorded a few sessions
+        </p>
+      </div>
+    )
+  }
+
+  const chartData = trends.weekly
+    .filter((w) => w.avg_agitation !== null && w.avg_agitation !== undefined)
+    .map((w) => ({
+      label: new Date(w.week_start_ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      agitation: w.avg_agitation as number,
+      sessions: w.session_count,
+    }))
+
+  const totalMood = trends.mood_distribution.reduce((sum, m) => sum + m.count, 0)
+
+  return (
+    <div className="space-y-5">
+      {/* Average agitation */}
+      <div className="p-6 rounded-2xl bg-white/70 backdrop-blur-sm border border-gray-100 shadow-sm">
+        <h3 className="text-lg font-light text-gray-800 mb-1" style={{ fontFamily: "Georgia, serif" }}>
+          Insights
+        </h3>
+        <p className="text-xs text-gray-400 mb-4">
+          {trends.total_sessions} session{trends.total_sessions === 1 ? "" : "s"} analyzed
+        </p>
+
+        <div className="flex items-baseline gap-2">
+          <span className="text-3xl font-light text-gray-700">
+            {trends.avg_agitation !== null && trends.avg_agitation !== undefined
+              ? trends.avg_agitation.toFixed(1)
+              : "—"}
+          </span>
+          <span className="text-sm text-gray-400">/ 10 avg. agitation</span>
+        </div>
+        <Badge
+          className="mt-2 px-3 py-1 text-xs font-medium border-0"
+          style={{ backgroundColor: `${moodColor(trends.calm_label)}22`, color: "#546A7B" }}
+        >
+          {trends.calm_label}
+        </Badge>
+      </div>
+
+      {/* Weekly agitation trend */}
+      {chartData.length > 0 && (
+        <div className="p-6 rounded-2xl bg-white/70 backdrop-blur-sm border border-gray-100 shadow-sm">
+          <p className="text-sm font-medium text-gray-600 mb-3">Agitation by week</p>
+          <ResponsiveContainer width="100%" height={160}>
+            <LineChart data={chartData} margin={{ top: 5, right: 8, left: -24, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#EFEFEF" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} />
+              <YAxis domain={[0, 10]} tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} width={32} />
+              <RechartsTooltip
+                contentStyle={{ borderRadius: 12, border: "1px solid #EEE", fontSize: 12 }}
+                formatter={(value: number) => [Number(value).toFixed(1), "Avg agitation"]}
+              />
+              <Line
+                type="monotone"
+                dataKey="agitation"
+                stroke="#8BAAAD"
+                strokeWidth={2.5}
+                dot={{ r: 3, fill: "#8BAAAD" }}
+                activeDot={{ r: 5 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Mood distribution */}
+      {totalMood > 0 && (
+        <div className="p-6 rounded-2xl bg-white/70 backdrop-blur-sm border border-gray-100 shadow-sm">
+          <p className="text-sm font-medium text-gray-600 mb-3">Mood mix</p>
+          <div className="space-y-2.5">
+            {trends.mood_distribution.map((m) => (
+              <div key={m.mood_label}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm capitalize text-gray-700">{m.mood_label}</span>
+                  <span className="text-xs text-gray-400">{m.count}</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${(m.count / totalMood) * 100}%`, backgroundColor: moodColor(m.mood_label) }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Most-repeated phrase */}
+      {trends.top_phrase && (
+        <div className="p-5 rounded-2xl bg-white/70 backdrop-blur-sm border border-gray-100 shadow-sm">
+          <p className="text-sm font-medium text-gray-600 mb-1">Most repeated phrase</p>
+          <p className="text-base text-gray-800 italic">&ldquo;{trends.top_phrase}&rdquo;</p>
+          <p className="text-xs text-gray-400 mt-1">heard {trends.top_phrase_count}×</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Component() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("home")
   const [selectedSessionType, setSelectedSessionType] = useState<SessionType>(null)
@@ -124,6 +275,9 @@ export default function Component() {
   const [customRangeOpen, setCustomRangeOpen] = useState(false)
   const [customStart, setCustomStart] = useState("")
   const [customEnd, setCustomEnd] = useState("")
+  const [weekTrends, setWeekTrends] = useState<TrendsResponse | null>(null)
+  const [allTrends, setAllTrends] = useState<TrendsResponse | null>(null)
+  const [isLoadingTrends, setIsLoadingTrends] = useState(true)
 
   // Use the audio recording hook
   const audioRecording = useAudioRecording()
@@ -167,6 +321,36 @@ export default function Component() {
 
     loadSessions()
   }, [])
+
+  // Epoch ms of the local Sunday 00:00 for the current week (matches the
+  // backend week buckets and the export presets).
+  const getWeekStartMs = () => {
+    const week = new Date()
+    week.setHours(0, 0, 0, 0)
+    week.setDate(week.getDate() - week.getDay())
+    return week.getTime()
+  }
+
+  // Load trend aggregates: this-week (badge + highlights) and all-time (panel).
+  const loadTrends = useCallback(async () => {
+    try {
+      setIsLoadingTrends(true)
+      const [week, all] = await Promise.all([
+        api.getTrends(getWeekStartMs()),
+        api.getTrends(),
+      ])
+      setWeekTrends(week)
+      setAllTrends(all)
+    } catch (error) {
+      console.error('Failed to load trends:', error)
+    } finally {
+      setIsLoadingTrends(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadTrends()
+  }, [loadTrends])
 
   // Generate a care-summary PDF for an optional epoch-ms range and download it.
   const handleExportReport = async (fromTs?: number, toTs?: number) => {
@@ -231,15 +415,16 @@ export default function Component() {
     handleExportReport(fromTs, toTs)
   }
 
-  // Show weekly highlights after 3 seconds on home screen
+  // Show weekly highlights after 3 seconds on home screen — but only when there
+  // are real sessions this week to highlight (no empty/placeholder modal).
   useEffect(() => {
-    if (currentScreen === "home") {
+    if (currentScreen === "home" && weekTrends && weekTrends.total_sessions > 0) {
       const timer = setTimeout(() => {
         setShowWeeklyHighlights(true)
       }, 3000)
       return () => clearTimeout(timer)
     }
-  }, [currentScreen])
+  }, [currentScreen, weekTrends])
 
   // Process sessions data for display
   const today = new Date()
@@ -590,6 +775,8 @@ export default function Component() {
     } catch (error) {
       console.error('Failed to refresh sessions:', error)
     }
+    // Refresh trends so the badge/insights reflect the new session.
+    loadTrends()
   }
 
   const handleCancelSession = () => {
@@ -649,18 +836,40 @@ export default function Component() {
                       <span className="text-sm">📊</span>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-800">You recorded 4 sessions this week</p>
-                      <p className="text-xs text-gray-600">3 had calm tone, 1 showed increased repetition</p>
+                      <p className="text-sm font-medium text-gray-800">
+                        You recorded {weekTrends?.total_sessions ?? 0} session
+                        {(weekTrends?.total_sessions ?? 0) === 1 ? "" : "s"} this week
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        {weekTrends && weekTrends.mood_distribution.length > 0
+                          ? `Most often ${weekTrends.mood_distribution[0].mood_label} · avg agitation ${
+                              weekTrends.avg_agitation?.toFixed(1) ?? "—"
+                            }/10`
+                          : `Average agitation ${weekTrends?.avg_agitation?.toFixed(1) ?? "—"}/10`}
+                      </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50">
                     <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                      <span className="text-sm">💝</span>
+                      <span className="text-sm">{weekTrends?.top_phrase ? "🔁" : "💝"}</span>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-800">You responded with patience every time</p>
-                      <p className="text-xs text-gray-600">Your care makes all the difference</p>
+                      {weekTrends?.top_phrase ? (
+                        <>
+                          <p className="text-sm font-medium text-gray-800">
+                            &ldquo;{weekTrends.top_phrase}&rdquo; came up most
+                          </p>
+                          <p className="text-xs text-gray-600">Heard {weekTrends.top_phrase_count}× this week</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-medium text-gray-800">
+                            This week felt {(weekTrends?.calm_label ?? "calm").toLowerCase()}
+                          </p>
+                          <p className="text-xs text-gray-600">Your steady presence makes the difference</p>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -704,13 +913,15 @@ export default function Component() {
                       <p className="text-gray-500 text-lg font-light">Your care journey, documented with love</p>
                     </div>
                     <div className="text-right">
-                      <Badge
-                        className="mb-2 px-3 py-1 text-xs font-medium border-0"
-                        style={{ backgroundColor: "#E8F5E8", color: "#2D5016" }}
-                      >
-                        <TrendingUp className="w-3 h-3 mr-1" />
-                        Overall Calm This Week
-                      </Badge>
+                      {weekTrends && weekTrends.total_sessions > 0 && weekTrends.calm_label !== "No data" && (
+                        <Badge
+                          className="mb-2 px-3 py-1 text-xs font-medium border-0"
+                          style={calmBadgeStyle(weekTrends.calm_label)}
+                        >
+                          <TrendingUp className="w-3 h-3 mr-1" />
+                          Overall {weekTrends.calm_label} This Week
+                        </Badge>
+                      )}
                       <p className="text-sm text-gray-400 font-medium">{new Date().toLocaleDateString('en-US', { weekday: 'long' })}</p>
                       <p className="text-2xl font-light text-gray-700">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</p>
 
@@ -914,14 +1125,10 @@ export default function Component() {
                 </div>
               </div>
 
-              {/* Right Space for Future Content */}
+              {/* Right Insights Panel (M2 — real trends) */}
               <div className="hidden lg:block w-1/3 p-8">
                 <div className="sticky top-8">
-                  <div className="p-6 rounded-2xl bg-white/50 backdrop-blur-sm border border-gray-100">
-                    <p className="text-gray-400 text-sm text-center italic">
-                      Space for insights, patterns, and reflections
-                    </p>
-                  </div>
+                  <InsightsPanel trends={allTrends} isLoading={isLoadingTrends} />
                 </div>
               </div>
             </div>

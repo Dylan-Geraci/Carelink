@@ -125,6 +125,33 @@ class SessionListItem(BaseModel):
 class SessionListResponse(BaseModel):
     sessions: List[SessionListItem]
 
+
+# Trend analysis (M2)
+
+
+class TrendPoint(BaseModel):
+    """One week's worth of aggregated session data."""
+    week_start_ts: int                      # epoch ms, local Sunday 00:00
+    session_count: int
+    avg_agitation: Optional[float] = None   # 0-10 scale; None if no scored sessions
+
+
+class MoodSlice(BaseModel):
+    mood_label: str
+    count: int
+
+
+class TrendsResponse(BaseModel):
+    from_ts: Optional[int] = None
+    to_ts: Optional[int] = None
+    total_sessions: int                     # sessions with a summary in range
+    avg_agitation: Optional[float] = None   # mean across all scored sessions, 0-10
+    calm_label: str                         # "Calm" | "Mixed" | "Elevated" | "No data"
+    mood_distribution: List[MoodSlice]
+    top_phrase: Optional[str] = None
+    top_phrase_count: int = 0
+    weekly: List[TrendPoint]
+
 # Database Models (for internal use)
 
 

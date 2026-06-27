@@ -1,5 +1,5 @@
 import database
-from routes import session, transcribe, summarize, medication_chain, freeform_chain, sundowning_chain, audio, export
+from routes import session, transcribe, summarize, medication_chain, freeform_chain, sundowning_chain, audio, export, trends
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -83,6 +83,7 @@ app.include_router(transcribe.router)
 app.include_router(summarize.router)
 app.include_router(audio.router)
 app.include_router(export.router)
+app.include_router(trends.router)
 
 # Include prompt chaining routers
 app.include_router(medication_chain.router)

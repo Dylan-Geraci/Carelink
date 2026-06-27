@@ -243,6 +243,42 @@ def get_report_sessions(from_ts: Optional[int] = None,
         return [dict(row) for row in cursor.fetchall()]
 
 
+def get_trend_sessions(from_ts: Optional[int] = None,
+                       to_ts: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Summarized sessions over an optional epoch-ms range, for trend analysis.
+
+    Inner-joins summaries (sessions without a summary contribute nothing to
+    trends). Ordered oldest -> newest. Returns plain dicts feeding the internal
+    aggregator in ``trends.py``, not an exposed JSON contract.
+    """
+    query = """
+        SELECT
+            s.session_id,
+            s.start_ts,
+            sum.agitation_score,
+            sum.mood_label,
+            sum.repetition_json
+        FROM sessions s
+        JOIN summaries sum ON s.session_id = sum.session_id
+    """
+    conditions = []
+    params: List[Any] = []
+    if from_ts is not None:
+        conditions.append("s.start_ts >= ?")
+        params.append(from_ts)
+    if to_ts is not None:
+        conditions.append("s.start_ts <= ?")
+        params.append(to_ts)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY s.start_ts ASC"
+
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+
 def delete_session(session_id: str) -> bool:
     """Delete a session (cascades to related tables)."""
     with db_cursor() as cursor:
