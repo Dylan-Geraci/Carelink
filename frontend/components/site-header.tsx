@@ -37,6 +37,22 @@ export function SiteHeader() {
     }
   }
 
+  // The in-app workspace has its own centered branding + patient toolbar, so the
+  // marketing logo bar is redundant here. Render nothing on /app unless there's
+  // an account action to keep reachable (sign out), and even then drop the logo.
+  if (isOnApp) {
+    if (authEnabled && user) {
+      return (
+        <div className="absolute right-6 top-4 z-40">
+          <Button variant="outline" size="sm" onClick={handleSignOut}>
+            Sign out
+          </Button>
+        </div>
+      )
+    }
+    return null
+  }
+
   return (
     <header className="sticky top-0 z-40 border-b border-muted/40 bg-background/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">

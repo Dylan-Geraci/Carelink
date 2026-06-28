@@ -794,23 +794,24 @@ export default function Component() {
         {/* Home Screen */}
         {currentScreen === "home" && (
           <div className="min-h-screen pb-32">
+            {/* Centered app title — spans the full app width, not just the timeline column */}
+            <div className="px-8 pt-12 pb-4 text-center">
+              <h1
+                className="text-4xl font-light text-gray-800 mb-2 tracking-tight"
+                style={{ fontFamily: "Georgia, serif" }}
+              >
+                Carelink
+              </h1>
+              <p className="text-gray-500 text-lg font-light">Your care journey, documented with love</p>
+            </div>
             <div className="flex">
               {/* Left Timeline Section - Journal Style */}
-              <div className="w-full max-w-4xl pl-8 pr-4 py-12 relative">
-                {/* Header */}
+              <div className="w-full max-w-4xl pl-8 pr-4 pb-12 pt-2 relative">
+                {/* Header toolbar — patient switcher + date / export */}
                 <div className="mb-12 pl-16">
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      <h1
-                        className="text-4xl font-light text-gray-800 mb-2 tracking-tight"
-                        style={{ fontFamily: "Georgia, serif" }}
-                      >
-                        Carelink
-                      </h1>
-                      <p className="text-gray-500 text-lg font-light">Your care journey, documented with love</p>
-                      <div className="mt-4">
-                        <PatientBar />
-                      </div>
+                      <PatientBar />
                     </div>
                     <div className="text-right">
                       {weekTrends && weekTrends.total_sessions > 0 && weekTrends.calm_label !== "No data" && (
