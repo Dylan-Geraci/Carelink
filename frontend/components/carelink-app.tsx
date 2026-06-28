@@ -6,6 +6,7 @@ import { InsightsPanel } from "@/components/insights-panel"
 import { RemindersPanel } from "@/components/reminders-panel"
 import { PatientBar } from "@/components/care-circle"
 import { usePatient } from "@/components/providers/patient-provider"
+import { SessionDetailDialog } from "@/components/session-detail"
 import { useAudioRecording } from "@/hooks/useAudioRecording"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -145,6 +146,7 @@ export default function Component() {
   const [weekTrends, setWeekTrends] = useState<TrendsResponse | null>(null)
   const [allTrends, setAllTrends] = useState<TrendsResponse | null>(null)
   const [isLoadingTrends, setIsLoadingTrends] = useState(true)
+  const [detailSessionId, setDetailSessionId] = useState<string | null>(null)
 
   // Use the audio recording hook
   const audioRecording = useAudioRecording()
@@ -642,6 +644,17 @@ export default function Component() {
   }
 
   const handleSaveAndContinue = async () => {
+    // Persist the caregiver's reflection note before tearing down the screen.
+    const sessionId = analysisResult?.session_id || recordingResult?.metadata?.session_id
+    const note = reflectionText.trim()
+    if (sessionId && note) {
+      try {
+        await api.updateSessionNote(sessionId, note)
+      } catch (error) {
+        console.error("Failed to save reflection note:", error)
+      }
+    }
+
     // Reset all recording state
     audioRecording.resetRecording()
     setRecordingResult(null)
@@ -951,7 +964,16 @@ export default function Component() {
                             {/* Session Card - Left Third Layout */}
                             <div className="ml-20 w-full max-w-2xl">
                               <Card
-                                className="border-0 cursor-pointer transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-lg relative overflow-hidden"
+                                onClick={() => setDetailSessionId(session.id)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault()
+                                    setDetailSessionId(session.id)
+                                  }
+                                }}
+                                className="border-0 cursor-pointer transition-all duration-300 ease-out hover:scale-[1.01] hover:shadow-lg relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8BAAAD]"
                                 style={{
                                   backgroundColor: "#FFFFFF",
                                   boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
@@ -1478,24 +1500,35 @@ export default function Component() {
                     </div>
                   </div>
 
-                  {/* Edit Options */}
+                  {/* Edit Options — open the session detail editor for this session */}
                   <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-gray-500 hover:text-gray-700 px-3 py-1.5 h-auto rounded-full"
-                    >
-                      <Edit3 className="w-3 h-3 mr-1" />
-                      Edit Summary
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-gray-500 hover:text-gray-700 px-3 py-1.5 h-auto rounded-full"
-                    >
-                      <Tag className="w-3 h-3 mr-1" />
-                      Add Tags
-                    </Button>
+                    {(() => {
+                      const sid = analysisResult?.session_id || recordingResult?.metadata?.session_id || null
+                      return (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={!sid}
+                            onClick={() => sid && setDetailSessionId(sid)}
+                            className="text-gray-500 hover:text-gray-700 px-3 py-1.5 h-auto rounded-full disabled:opacity-50"
+                          >
+                            <Edit3 className="w-3 h-3 mr-1" />
+                            Edit Summary
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={!sid}
+                            onClick={() => sid && setDetailSessionId(sid)}
+                            className="text-gray-500 hover:text-gray-700 px-3 py-1.5 h-auto rounded-full disabled:opacity-50"
+                          >
+                            <Tag className="w-3 h-3 mr-1" />
+                            Add Tags
+                          </Button>
+                        </>
+                      )
+                    })()}
                   </div>
                 </CardContent>
               </Card>
@@ -1582,6 +1615,24 @@ export default function Component() {
             </div>
           </div>
         )}
+
+        {/* Session detail — opened from a timeline card or the summary screen */}
+        <SessionDetailDialog
+          sessionId={detailSessionId}
+          open={detailSessionId !== null}
+          onOpenChange={(o) => {
+            if (!o) setDetailSessionId(null)
+          }}
+          onSaved={async () => {
+            try {
+              const response = await api.getSessions()
+              setSessions(response.sessions)
+            } catch (error) {
+              console.error("Failed to refresh sessions:", error)
+            }
+            loadTrends()
+          }}
+        />
       </div>
     </TooltipProvider>
   )

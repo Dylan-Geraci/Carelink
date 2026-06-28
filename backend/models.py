@@ -98,7 +98,17 @@ class Summary(BaseModel):
     agitation_score: Optional[float]
     mood_label: Optional[str]
     suggestions: Optional[str]
+    tags: Optional[str] = None               # JSON array string
     created_ts: int
+
+
+class SessionNoteUpdate(BaseModel):
+    notes: str                               # caregiver reflection
+
+
+class SummaryUpdate(BaseModel):
+    summary_text: Optional[str] = None
+    tags: Optional[List[str]] = None
 
 
 class SessionDetail(BaseModel):

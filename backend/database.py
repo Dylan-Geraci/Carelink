@@ -100,6 +100,7 @@ def _run_migrations(conn):
     # that predates ownership to a single default patient.
     _add_column_if_missing(conn, "sessions", "patient_id", "TEXT")
     _add_column_if_missing(conn, "reminders", "patient_id", "TEXT")
+    _add_column_if_missing(conn, "summaries", "tags", "TEXT")  # M5 cleanup: editable tags
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_patient ON sessions(patient_id)")
 
     now = int(time.time() * 1000)

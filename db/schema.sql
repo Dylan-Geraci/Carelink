@@ -42,6 +42,7 @@ CREATE TABLE summaries (
   agitation_score REAL,
   mood_label      TEXT,
   suggestions     TEXT,
+  tags            TEXT,   -- JSON array of caregiver/AI tags, e.g. ["medication","calm"]
   created_ts      INTEGER NOT NULL,
   FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 );

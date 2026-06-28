@@ -222,8 +222,8 @@ async def process_session(request_data: dict):
             try:
                 cursor.execute(
                     """INSERT OR REPLACE INTO summaries (session_id, summary_text, mood_label,
-                       agitation_score, repetition_json, suggestions, created_ts)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                       agitation_score, repetition_json, suggestions, tags, created_ts)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         session_id,
                         summary_to_store,
@@ -233,6 +233,7 @@ async def process_session(request_data: dict):
                         # trends/report (which json.loads it) get a valid array.
                         json.dumps(analysis_result.get("repetition_json") or []),
                         json.dumps(analysis_result.get("suggestions", [])),
+                        json.dumps(analysis_result.get("tags") or []),
                         int(datetime.now().timestamp() * 1000)
                     )
                 )

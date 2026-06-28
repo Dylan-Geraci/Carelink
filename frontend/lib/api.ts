@@ -80,16 +80,43 @@ export interface SessionListResponse {
   sessions: SessionListItem[]
 }
 
+// Nested shape returned by GET /api/session/{id} — matches backend SessionDetail.
+export interface AudioChunk {
+  chunk_id: number
+  file_path: string
+  duration_sec?: number | null
+  created_ts: number
+}
+
+export interface Transcript {
+  transcript_id: number
+  chunk_id?: number | null
+  text: string
+  language?: string | null
+  word_count?: number | null
+  created_ts: number
+}
+
+export interface SessionSummary {
+  summary_id: number
+  summary_text: string
+  repetition_json?: string | null
+  agitation_score?: number | null
+  mood_label?: string | null
+  suggestions?: string | null
+  tags?: string | null // JSON array string
+  created_ts: number
+}
+
 export interface SessionDetail {
   session_id: string
   session_type: string
   start_ts: number
-  end_ts?: number
-  notes?: string
-  summary_text?: string
-  mood_label?: string
-  agitation_score?: number
-  suggestions?: string
+  end_ts?: number | null
+  notes?: string | null
+  audio_chunks: AudioChunk[]
+  transcripts: Transcript[]
+  summary: SessionSummary | null
 }
 
 // Trend analysis (M2) — must stay in sync with backend/models.py
@@ -255,6 +282,31 @@ export class CarelinkAPI {
       throw new Error(`Failed to get session: ${await errorDetail(response)}`)
     }
 
+    return response.json()
+  }
+
+  // Save the caregiver's reflection note onto a session.
+  async updateSessionNote(sessionId: string, notes: string): Promise<SessionDetail> {
+    const response = await this.request(`/session/${sessionId}/note`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes }),
+    })
+    if (!response.ok) throw new Error(`Failed to save note: ${await errorDetail(response)}`)
+    return response.json()
+  }
+
+  // Edit a session's AI summary text and/or its tags.
+  async updateSessionSummary(
+    sessionId: string,
+    fields: { summary_text?: string; tags?: string[] },
+  ): Promise<SessionDetail> {
+    const response = await this.request(`/session/${sessionId}/summary`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    })
+    if (!response.ok) throw new Error(`Failed to save changes: ${await errorDetail(response)}`)
     return response.json()
   }
 

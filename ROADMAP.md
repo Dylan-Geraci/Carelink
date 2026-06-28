@@ -75,7 +75,16 @@ and roles are modelled in data and gated in the UI. No cloud sync (true to the o
 
 ## 🧹 Cleanup / honesty backlog
 
-- [ ] Save the session reflection note (currently discarded in `handleSaveAndContinue`).
-- [ ] Wire session-detail view — `api.getSession()` exists but is never called (cards open nothing).
-- [ ] Make "Edit Summary" / "Add Tags" buttons functional (currently no handlers).
+- [x] Save the session reflection note (2026-06-28) — `handleSaveAndContinue` now persists it via
+      `PATCH /api/session/{id}/note` before navigating.
+- [x] Wire session-detail view (2026-06-28) — timeline cards open `SessionDetailDialog`
+      (`components/session-detail.tsx`), a journal-entry view of the session
+      (mood/agitation, summary, repeated phrases, suggestions, transcript, reflection).
+      Fixed the `SessionDetail` front/back contract drift (frontend type was flat; backend is nested).
+- [x] Make "Edit Summary" / "Add Tags" functional (2026-06-28) — inline editing in the detail
+      view, persisted via `PATCH /api/session/{id}/summary` (`summary_text` + a new `tags` column);
+      the summary-screen buttons open the same editor.
 - [x] Stop hardcoding home-screen "insights" ("Overall Calm This Week" badge, Highlights modal) — done in M2.
+
+**All roadmap items complete.** Note: the recording → transcribe → summarize pipeline (whisper.cpp +
+Ollama) is the one path verified only manually/locally, not in CI.

@@ -52,6 +52,34 @@ def update_session_end(session_id: str, end_ts: int, notes: Optional[str] = None
         return cursor.rowcount > 0
 
 
+def update_session_note(session_id: str, notes: str) -> bool:
+    """Save the caregiver's reflection note onto a session."""
+    with db_cursor() as cursor:
+        cursor.execute(
+            "UPDATE sessions SET notes = ? WHERE session_id = ?", (notes, session_id))
+        return cursor.rowcount > 0
+
+
+def update_summary_fields(session_id: str, summary_text: Optional[str] = None,
+                          tags: Optional[List[str]] = None) -> bool:
+    """Patch an existing summary's text and/or tags. tags is stored as JSON."""
+    updates: List[str] = []
+    params: List[Any] = []
+    if summary_text is not None:
+        updates.append("summary_text = ?")
+        params.append(summary_text)
+    if tags is not None:
+        updates.append("tags = ?")
+        params.append(json.dumps(tags))
+    if not updates:
+        return False
+    params.append(session_id)
+    with db_cursor() as cursor:
+        cursor.execute(
+            f"UPDATE summaries SET {', '.join(updates)} WHERE session_id = ?", params)
+        return cursor.rowcount > 0
+
+
 def insert_audio_chunk(session_id: str, file_path: str, duration_sec: Optional[int] = None) -> int:
     """Insert an audio chunk and return chunk_id."""
     created_ts = int(time.time() * 1000)
@@ -80,17 +108,18 @@ def insert_transcript(session_id: str, text: str, chunk_id: Optional[int] = None
 
 def insert_summary(session_id: str, summary_text: str, repetition_json: Optional[List[Dict[str, Any]]] = None,
                    agitation_score: Optional[float] = None, mood_label: Optional[str] = None,
-                   suggestions: Optional[str] = None) -> int:
+                   suggestions: Optional[str] = None, tags: Optional[List[str]] = None) -> int:
     """Insert a summary and return summary_id."""
     created_ts = int(time.time() * 1000)
     repetition_json_str = json.dumps(
         repetition_json) if repetition_json else None
+    tags_str = json.dumps(tags) if tags else None
 
     with db_cursor() as cursor:
         cursor.execute(
-            "INSERT INTO summaries (session_id, summary_text, repetition_json, agitation_score, mood_label, suggestions, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO summaries (session_id, summary_text, repetition_json, agitation_score, mood_label, suggestions, tags, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (session_id, summary_text, repetition_json_str,
-             agitation_score, mood_label, suggestions, created_ts)
+             agitation_score, mood_label, suggestions, tags_str, created_ts)
         )
         return cursor.lastrowid
 
@@ -144,7 +173,7 @@ def get_session_detail(session_id: str) -> Optional[SessionDetail]:
 
         # Get summary
         cursor.execute(
-            "SELECT summary_id, summary_text, repetition_json, agitation_score, mood_label, suggestions, created_ts FROM summaries WHERE session_id = ?",
+            "SELECT summary_id, summary_text, repetition_json, agitation_score, mood_label, suggestions, tags, created_ts FROM summaries WHERE session_id = ?",
             (session_id,)
         )
         summary_row = cursor.fetchone()
@@ -157,6 +186,7 @@ def get_session_detail(session_id: str) -> Optional[SessionDetail]:
                 agitation_score=summary_row["agitation_score"],
                 mood_label=summary_row["mood_label"],
                 suggestions=summary_row["suggestions"],
+                tags=summary_row["tags"],
                 created_ts=summary_row["created_ts"]
             )
 

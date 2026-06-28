@@ -2,7 +2,8 @@
 
 from models import (
     StartSessionRequest, StartSessionResponse,
-    StoreSessionRequest, SessionDetail, SessionListResponse
+    StoreSessionRequest, SessionDetail, SessionListResponse,
+    SessionNoteUpdate, SummaryUpdate
 )
 import crud
 from deps import get_patient_id
@@ -102,6 +103,24 @@ async def get_sessions(limit: int = 100, offset: int = 0,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve sessions: {str(e)}"
         )
+
+
+@router.patch("/session/{session_id}/note", response_model=SessionDetail)
+async def update_session_note(session_id: str, req: SessionNoteUpdate):
+    """Save the caregiver's reflection note onto a session."""
+    if not crud.update_session_note(session_id, req.notes):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return crud.get_session_detail(session_id)
+
+
+@router.patch("/session/{session_id}/summary", response_model=SessionDetail)
+async def update_session_summary(session_id: str, req: SummaryUpdate):
+    """Edit a session's AI summary text and/or its tags."""
+    if req.summary_text is None and req.tags is None:
+        raise HTTPException(status_code=400, detail="Provide summary_text or tags to update.")
+    if not crud.update_summary_fields(session_id, req.summary_text, req.tags):
+        raise HTTPException(status_code=404, detail="No summary found for this session yet.")
+    return crud.get_session_detail(session_id)
 
 
 @router.delete("/session/{session_id}")
