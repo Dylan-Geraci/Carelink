@@ -3,7 +3,10 @@ import time
 import json
 from typing import List, Optional, Dict, Any
 from database import db_cursor, db_connection
-from models import SessionDB, AudioChunk, Transcript, Summary, SessionDetail, SessionListItem
+from models import (
+    SessionDB, AudioChunk, Transcript, Summary, SessionDetail, SessionListItem,
+    Reminder,
+)
 
 
 def create_session(session_type: str, start_ts: int) -> str:
@@ -284,6 +287,89 @@ def delete_session(session_id: str) -> bool:
     with db_cursor() as cursor:
         cursor.execute(
             "DELETE FROM sessions WHERE session_id = ?", (session_id,))
+        return cursor.rowcount > 0
+
+
+# ── Reminders (M3) ───────────────────────────────────────────────────────────
+
+def _row_to_reminder(row) -> Reminder:
+    return Reminder(
+        reminder_id=row["reminder_id"],
+        title=row["title"],
+        kind=row["kind"],
+        recurrence=row["recurrence"],
+        due_ts=row["due_ts"],
+        time_of_day=row["time_of_day"],
+        notes=row["notes"],
+        last_done_ts=row["last_done_ts"],
+        active=row["active"],
+        created_ts=row["created_ts"],
+    )
+
+
+def create_reminder(title: str, kind: str, recurrence: str = "once",
+                    due_ts: Optional[int] = None, time_of_day: Optional[str] = None,
+                    notes: Optional[str] = None) -> Reminder:
+    """Insert a reminder and return the created row."""
+    created_ts = int(time.time() * 1000)
+    with db_cursor() as cursor:
+        cursor.execute(
+            """INSERT INTO reminders
+               (title, kind, recurrence, due_ts, time_of_day, notes, created_ts)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (title, kind, recurrence, due_ts, time_of_day, notes, created_ts),
+        )
+        new_id = cursor.lastrowid
+        cursor.execute("SELECT * FROM reminders WHERE reminder_id = ?", (new_id,))
+        return _row_to_reminder(cursor.fetchone())
+
+
+def get_reminders(include_inactive: bool = False) -> List[Reminder]:
+    """List reminders, active-only by default. Newest first."""
+    query = "SELECT * FROM reminders"
+    if not include_inactive:
+        query += " WHERE active = 1"
+    query += " ORDER BY created_ts DESC"
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query)
+        return [_row_to_reminder(row) for row in cursor.fetchall()]
+
+
+def get_reminder(reminder_id: int) -> Optional[Reminder]:
+    with db_cursor() as cursor:
+        cursor.execute("SELECT * FROM reminders WHERE reminder_id = ?", (reminder_id,))
+        row = cursor.fetchone()
+        return _row_to_reminder(row) if row else None
+
+
+def update_reminder(reminder_id: int, fields: Dict[str, Any]) -> Optional[Reminder]:
+    """Patch the given columns. Ignores unknown/None keys; no-op returns current."""
+    allowed = {"title", "due_ts", "time_of_day", "notes", "last_done_ts", "active"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not updates:
+        return get_reminder(reminder_id)
+
+    set_clause = ", ".join(f"{col} = ?" for col in updates)
+    params = list(updates.values()) + [reminder_id]
+    with db_cursor() as cursor:
+        cursor.execute(
+            f"UPDATE reminders SET {set_clause} WHERE reminder_id = ?", params)
+        if cursor.rowcount == 0:
+            return None
+        cursor.execute("SELECT * FROM reminders WHERE reminder_id = ?", (reminder_id,))
+        return _row_to_reminder(cursor.fetchone())
+
+
+def mark_reminder_done(reminder_id: int) -> Optional[Reminder]:
+    """Stamp last_done_ts = now. For daily reminders this marks today's
+    occurrence handled; the client re-derives 'due again' the next day."""
+    return update_reminder(reminder_id, {"last_done_ts": int(time.time() * 1000)})
+
+
+def delete_reminder(reminder_id: int) -> bool:
+    with db_cursor() as cursor:
+        cursor.execute("DELETE FROM reminders WHERE reminder_id = ?", (reminder_id,))
         return cursor.rowcount > 0
 
 

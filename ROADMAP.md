@@ -40,10 +40,18 @@ Aggregate `summaries` (agitation, mood, repetition) over time.
       `getTrends(weekStart)`), and the hardcoded "Overall Calm This Week" badge with the
       derived `calm_label`.
 
-### M3 — Smart reminders
-Medication / appointment scheduling + reminders.
-- [ ] New data model (reminders/schedules) + CRUD + routes.
-- [ ] Reminder UI; surface upcoming items on the home screen.
+### M3 — Smart reminders ✅ done (2026-06-27)
+Medication / appointment scheduling + reminders. **In-app only** (offline app — no push/email).
+- [x] Data model: `reminders` table (`db/schema.sql` + idempotent live migration in
+      `database.py` `_run_migrations`, so existing DBs pick it up). Two kinds: `medication`
+      (recurrence `daily` at `time_of_day` 'HH:MM') and `appointment` (`once` at `due_ts`).
+- [x] CRUD + routes: `crud.py` reminder fns; `routes/reminders.py`
+      (`GET/POST /api/reminders`, `PATCH`/`DELETE /api/reminders/{id}`,
+      `POST /api/reminders/{id}/done`) with readable 400 validation.
+- [x] Reminder UI on the home screen: `components/reminders-panel.tsx` (right column, above
+      insights) — surfaces overdue/today/upcoming, mark-done, an Add dialog (med/appointment
+      toggle) and a Manage-all dialog. Occurrence/overdue status is derived against a live
+      clock on the client (re-ticks each minute), not stored.
 
 ### M4 — Team collaboration
 Multiple caregivers, shared records, role-based access.

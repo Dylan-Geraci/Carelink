@@ -152,6 +152,44 @@ class TrendsResponse(BaseModel):
     top_phrase_count: int = 0
     weekly: List[TrendPoint]
 
+
+# Smart reminders (M3)
+
+
+class ReminderCreate(BaseModel):
+    title: str
+    kind: str                               # 'medication' | 'appointment'
+    recurrence: str = "once"                # 'once' | 'daily'
+    due_ts: Optional[int] = None            # one-off: absolute epoch ms
+    time_of_day: Optional[str] = None       # daily: 'HH:MM' local
+    notes: Optional[str] = None
+
+
+class ReminderUpdate(BaseModel):
+    title: Optional[str] = None
+    due_ts: Optional[int] = None
+    time_of_day: Optional[str] = None
+    notes: Optional[str] = None
+    last_done_ts: Optional[int] = None
+    active: Optional[int] = None
+
+
+class Reminder(BaseModel):
+    reminder_id: int
+    title: str
+    kind: str
+    recurrence: str
+    due_ts: Optional[int] = None
+    time_of_day: Optional[str] = None
+    notes: Optional[str] = None
+    last_done_ts: Optional[int] = None
+    active: int
+    created_ts: int
+
+
+class ReminderListResponse(BaseModel):
+    reminders: List[Reminder]
+
 # Database Models (for internal use)
 
 

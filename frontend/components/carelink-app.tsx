@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { api, SessionListItem, RecordAudioResponse, ProcessSessionResponse, TrendsResponse } from "@/lib/api"
 import { InsightsPanel } from "@/components/insights-panel"
+import { RemindersPanel } from "@/components/reminders-panel"
 import { useAudioRecording } from "@/hooks/useAudioRecording"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -989,9 +990,10 @@ export default function Component() {
                 </div>
               </div>
 
-              {/* Right Insights Panel (M2 — real trends) */}
+              {/* Right column — reminders (M3) above insights (M2) */}
               <div className="hidden lg:block w-1/3 p-8">
-                <div className="sticky top-8">
+                <div className="sticky top-8 space-y-6">
+                  <RemindersPanel />
                   <InsightsPanel trends={allTrends} isLoading={isLoadingTrends} />
                 </div>
               </div>

@@ -116,6 +116,36 @@ export interface TrendsResponse {
   weekly: TrendPoint[]
 }
 
+// Smart reminders (M3) — must stay in sync with backend/models.py
+export type ReminderKind = "medication" | "appointment"
+export type ReminderRecurrence = "once" | "daily"
+
+export interface Reminder {
+  reminder_id: number
+  title: string
+  kind: ReminderKind
+  recurrence: ReminderRecurrence
+  due_ts?: number | null
+  time_of_day?: string | null
+  notes?: string | null
+  last_done_ts?: number | null
+  active: number
+  created_ts: number
+}
+
+export interface ReminderCreate {
+  title: string
+  kind: ReminderKind
+  recurrence: ReminderRecurrence
+  due_ts?: number | null
+  time_of_day?: string | null
+  notes?: string | null
+}
+
+export interface ReminderListResponse {
+  reminders: Reminder[]
+}
+
 // API client functions
 export class CarelinkAPI {
   private baseUrl: string
@@ -242,6 +272,37 @@ export class CarelinkAPI {
     }
 
     return response.json()
+  }
+
+  // ── Reminders (M3) ──────────────────────────────────────────────────────
+  async getReminders(includeInactive = false): Promise<ReminderListResponse> {
+    const qs = includeInactive ? "?include_inactive=true" : ""
+    const response = await fetch(`${this.baseUrl}/reminders${qs}`)
+    if (!response.ok) throw new Error(`Failed to load reminders: ${await errorDetail(response)}`)
+    return response.json()
+  }
+
+  async createReminder(reminder: ReminderCreate): Promise<Reminder> {
+    const response = await fetch(`${this.baseUrl}/reminders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reminder),
+    })
+    if (!response.ok) throw new Error(`Failed to create reminder: ${await errorDetail(response)}`)
+    return response.json()
+  }
+
+  async completeReminder(reminderId: number): Promise<Reminder> {
+    const response = await fetch(`${this.baseUrl}/reminders/${reminderId}/done`, { method: "POST" })
+    if (!response.ok) throw new Error(`Failed to update reminder: ${await errorDetail(response)}`)
+    return response.json()
+  }
+
+  async deleteReminder(reminderId: number): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/reminders/${reminderId}`, { method: "DELETE" })
+    if (!response.ok && response.status !== 204) {
+      throw new Error(`Failed to delete reminder: ${await errorDetail(response)}`)
+    }
   }
 
   // Health check
