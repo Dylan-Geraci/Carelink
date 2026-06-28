@@ -2,10 +2,10 @@ import uuid
 import time
 import json
 from typing import List, Optional, Dict, Any
-from database import db_cursor, db_connection
+from database import db_cursor, db_connection, DEFAULT_PATIENT_ID
 from models import (
     SessionDB, AudioChunk, Transcript, Summary, SessionDetail, SessionListItem,
-    Reminder,
+    Reminder, Caregiver, PatientWithRole, Member,
 )
 
 
@@ -172,8 +172,9 @@ def get_session_detail(session_id: str) -> Optional[SessionDetail]:
         )
 
 
-def get_sessions_list(limit: int = 100, offset: int = 0) -> List[SessionListItem]:
-    """Get list of sessions with summary snippets."""
+def get_sessions_list(patient_id: str = DEFAULT_PATIENT_ID,
+                      limit: int = 100, offset: int = 0) -> List[SessionListItem]:
+    """Get list of sessions (for one patient) with summary snippets."""
     with db_connection() as conn:
         cursor = conn.cursor()
 
@@ -188,9 +189,10 @@ def get_sessions_list(limit: int = 100, offset: int = 0) -> List[SessionListItem
                 sum.agitation_score
             FROM sessions s
             LEFT JOIN summaries sum ON s.session_id = sum.session_id
+            WHERE s.patient_id = ?
             ORDER BY s.start_ts DESC
             LIMIT ? OFFSET ?
-        """, (limit, offset))
+        """, (patient_id, limit, offset))
 
         return [
             SessionListItem(
@@ -206,14 +208,15 @@ def get_sessions_list(limit: int = 100, offset: int = 0) -> List[SessionListItem
         ]
 
 
-def get_report_sessions(from_ts: Optional[int] = None,
+def get_report_sessions(patient_id: str = DEFAULT_PATIENT_ID,
+                        from_ts: Optional[int] = None,
                         to_ts: Optional[int] = None) -> List[Dict[str, Any]]:
     """Sessions joined with full summary fields for PDF report export.
 
     Ordered oldest -> newest (chronological, the natural reading order for a
-    care report). Optional epoch-ms range filters on session start time.
-    Returns plain dicts because this feeds the internal report builder, not an
-    exposed JSON contract.
+    care report). Scoped to one patient; optional epoch-ms range filters on
+    session start time. Returns plain dicts because this feeds the internal
+    report builder, not an exposed JSON contract.
     """
     query = """
         SELECT
@@ -228,8 +231,8 @@ def get_report_sessions(from_ts: Optional[int] = None,
         FROM sessions s
         LEFT JOIN summaries sum ON s.session_id = sum.session_id
     """
-    conditions = []
-    params: List[Any] = []
+    conditions = ["s.patient_id = ?"]
+    params: List[Any] = [patient_id]
     if from_ts is not None:
         conditions.append("s.start_ts >= ?")
         params.append(from_ts)
@@ -246,9 +249,10 @@ def get_report_sessions(from_ts: Optional[int] = None,
         return [dict(row) for row in cursor.fetchall()]
 
 
-def get_trend_sessions(from_ts: Optional[int] = None,
+def get_trend_sessions(patient_id: str = DEFAULT_PATIENT_ID,
+                       from_ts: Optional[int] = None,
                        to_ts: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Summarized sessions over an optional epoch-ms range, for trend analysis.
+    """Summarized sessions (for one patient) over an optional epoch-ms range.
 
     Inner-joins summaries (sessions without a summary contribute nothing to
     trends). Ordered oldest -> newest. Returns plain dicts feeding the internal
@@ -264,8 +268,8 @@ def get_trend_sessions(from_ts: Optional[int] = None,
         FROM sessions s
         JOIN summaries sum ON s.session_id = sum.session_id
     """
-    conditions = []
-    params: List[Any] = []
+    conditions = ["s.patient_id = ?"]
+    params: List[Any] = [patient_id]
     if from_ts is not None:
         conditions.append("s.start_ts >= ?")
         params.append(from_ts)
@@ -309,30 +313,32 @@ def _row_to_reminder(row) -> Reminder:
 
 def create_reminder(title: str, kind: str, recurrence: str = "once",
                     due_ts: Optional[int] = None, time_of_day: Optional[str] = None,
-                    notes: Optional[str] = None) -> Reminder:
-    """Insert a reminder and return the created row."""
+                    notes: Optional[str] = None,
+                    patient_id: str = DEFAULT_PATIENT_ID) -> Reminder:
+    """Insert a reminder (for one patient) and return the created row."""
     created_ts = int(time.time() * 1000)
     with db_cursor() as cursor:
         cursor.execute(
             """INSERT INTO reminders
-               (title, kind, recurrence, due_ts, time_of_day, notes, created_ts)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (title, kind, recurrence, due_ts, time_of_day, notes, created_ts),
+               (title, kind, recurrence, due_ts, time_of_day, notes, created_ts, patient_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (title, kind, recurrence, due_ts, time_of_day, notes, created_ts, patient_id),
         )
         new_id = cursor.lastrowid
         cursor.execute("SELECT * FROM reminders WHERE reminder_id = ?", (new_id,))
         return _row_to_reminder(cursor.fetchone())
 
 
-def get_reminders(include_inactive: bool = False) -> List[Reminder]:
-    """List reminders, active-only by default. Newest first."""
-    query = "SELECT * FROM reminders"
+def get_reminders(patient_id: str = DEFAULT_PATIENT_ID,
+                  include_inactive: bool = False) -> List[Reminder]:
+    """List reminders for one patient, active-only by default. Newest first."""
+    query = "SELECT * FROM reminders WHERE patient_id = ?"
     if not include_inactive:
-        query += " WHERE active = 1"
+        query += " AND active = 1"
     query += " ORDER BY created_ts DESC"
     with db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(query)
+        cursor.execute(query, (patient_id,))
         return [_row_to_reminder(row) for row in cursor.fetchall()]
 
 
@@ -370,6 +376,187 @@ def mark_reminder_done(reminder_id: int) -> Optional[Reminder]:
 def delete_reminder(reminder_id: int) -> bool:
     with db_cursor() as cursor:
         cursor.execute("DELETE FROM reminders WHERE reminder_id = ?", (reminder_id,))
+        return cursor.rowcount > 0
+
+
+# ── Caregivers / patients / memberships (M4) ─────────────────────────────────
+
+def upsert_caregiver(caregiver_id: str, email: Optional[str],
+                     display_name: Optional[str]) -> Caregiver:
+    """Insert or refresh a caregiver, then bind any pending email invites to it.
+
+    Called on the frontend's first contact after login. Invites created before
+    this caregiver existed (status 'pending', matched by email) become active.
+    """
+    now = int(time.time() * 1000)
+    with db_cursor() as cursor:
+        cursor.execute(
+            """INSERT INTO caregivers (caregiver_id, email, display_name, created_ts)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(caregiver_id) DO UPDATE SET
+                   email = COALESCE(excluded.email, caregivers.email),
+                   display_name = COALESCE(excluded.display_name, caregivers.display_name)""",
+            (caregiver_id, email, display_name, now),
+        )
+        if email:
+            # OR IGNORE: skip if the caregiver already has a membership for that patient.
+            cursor.execute(
+                """UPDATE OR IGNORE memberships
+                   SET caregiver_id = ?, status = 'active'
+                   WHERE caregiver_id IS NULL AND LOWER(invited_email) = LOWER(?)""",
+                (caregiver_id, email),
+            )
+        cursor.execute("SELECT * FROM caregivers WHERE caregiver_id = ?", (caregiver_id,))
+        row = cursor.fetchone()
+        return Caregiver(
+            caregiver_id=row["caregiver_id"], email=row["email"],
+            display_name=row["display_name"], created_ts=row["created_ts"],
+        )
+
+
+def claim_default_patient_if_unowned(caregiver_id: str) -> None:
+    """Give the first caregiver to appear ownership of the backfilled default
+    patient (which holds all pre-M4 data), so existing sessions aren't orphaned."""
+    with db_cursor() as cursor:
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM memberships WHERE patient_id = ?", (DEFAULT_PATIENT_ID,))
+        if cursor.fetchone()["n"] == 0:
+            cursor.execute(
+                """INSERT INTO memberships (patient_id, caregiver_id, role, status, created_ts)
+                   VALUES (?, ?, 'owner', 'active', ?)""",
+                (DEFAULT_PATIENT_ID, caregiver_id, int(time.time() * 1000)),
+            )
+
+
+def get_caregiver_patients(caregiver_id: str) -> List[PatientWithRole]:
+    """Patients this caregiver actively belongs to, with their role."""
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT p.patient_id, p.name, m.role
+               FROM memberships m JOIN patients p ON m.patient_id = p.patient_id
+               WHERE m.caregiver_id = ? AND m.status = 'active'
+               ORDER BY p.created_ts""",
+            (caregiver_id,),
+        )
+        return [
+            PatientWithRole(patient_id=r["patient_id"], name=r["name"], role=r["role"])
+            for r in cursor.fetchall()
+        ]
+
+
+def get_membership_role(patient_id: str, caregiver_id: str) -> Optional[str]:
+    """The caregiver's role for a patient, or None if they're not a member."""
+    with db_cursor() as cursor:
+        cursor.execute(
+            """SELECT role FROM memberships
+               WHERE patient_id = ? AND caregiver_id = ? AND status = 'active'""",
+            (patient_id, caregiver_id),
+        )
+        row = cursor.fetchone()
+        return row["role"] if row else None
+
+
+def create_patient(name: str, created_by: str) -> PatientWithRole:
+    """Create a patient and make the creator its owner."""
+    patient_id = str(uuid.uuid4())
+    now = int(time.time() * 1000)
+    with db_cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO patients (patient_id, name, created_by, created_ts) VALUES (?, ?, ?, ?)",
+            (patient_id, name, created_by, now),
+        )
+        cursor.execute(
+            """INSERT INTO memberships (patient_id, caregiver_id, role, status, created_ts)
+               VALUES (?, ?, 'owner', 'active', ?)""",
+            (patient_id, created_by, now),
+        )
+    return PatientWithRole(patient_id=patient_id, name=name, role="owner")
+
+
+def get_patient_members(patient_id: str) -> List[Member]:
+    """All members (active + pending invites) for a patient."""
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT m.membership_id, m.caregiver_id, m.invited_email, m.role, m.status,
+                      c.email AS c_email, c.display_name
+               FROM memberships m
+               LEFT JOIN caregivers c ON m.caregiver_id = c.caregiver_id
+               WHERE m.patient_id = ?
+               ORDER BY (m.role = 'owner') DESC, m.created_ts""",
+            (patient_id,),
+        )
+        return [
+            Member(
+                membership_id=r["membership_id"],
+                caregiver_id=r["caregiver_id"],
+                email=r["c_email"] or r["invited_email"],
+                display_name=r["display_name"],
+                role=r["role"],
+                status=r["status"],
+            )
+            for r in cursor.fetchall()
+        ]
+
+
+def invite_member(patient_id: str, email: str, role: str = "caregiver") -> Member:
+    """Invite by email. If a caregiver with that email already exists, the
+    membership is active immediately; otherwise it's pending until they sync.
+    Raises ValueError if that person is already a member/invited."""
+    email = email.strip()
+    now = int(time.time() * 1000)
+    with db_cursor() as cursor:
+        cursor.execute("SELECT * FROM caregivers WHERE LOWER(email) = LOWER(?)", (email,))
+        existing = cursor.fetchone()
+        caregiver_id = existing["caregiver_id"] if existing else None
+        status = "active" if existing else "pending"
+
+        if caregiver_id:
+            cursor.execute(
+                "SELECT 1 FROM memberships WHERE patient_id = ? AND caregiver_id = ?",
+                (patient_id, caregiver_id))
+            if cursor.fetchone():
+                raise ValueError("That caregiver is already on this patient's circle.")
+        cursor.execute(
+            "SELECT 1 FROM memberships WHERE patient_id = ? AND LOWER(invited_email) = LOWER(?)",
+            (patient_id, email))
+        if cursor.fetchone():
+            raise ValueError("That email has already been invited.")
+
+        cursor.execute(
+            """INSERT INTO memberships
+               (patient_id, caregiver_id, invited_email, role, status, created_ts)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (patient_id, caregiver_id, email, role, status, now),
+        )
+        membership_id = cursor.lastrowid
+    return Member(
+        membership_id=membership_id, caregiver_id=caregiver_id, email=email,
+        display_name=existing["display_name"] if existing else None,
+        role=role, status=status,
+    )
+
+
+def get_membership(membership_id: int) -> Optional[Dict[str, Any]]:
+    with db_cursor() as cursor:
+        cursor.execute("SELECT * FROM memberships WHERE membership_id = ?", (membership_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def count_active_owners(patient_id: str) -> int:
+    with db_cursor() as cursor:
+        cursor.execute(
+            """SELECT COUNT(*) AS n FROM memberships
+               WHERE patient_id = ? AND role = 'owner' AND status = 'active'""",
+            (patient_id,))
+        return cursor.fetchone()["n"]
+
+
+def remove_member(membership_id: int) -> bool:
+    with db_cursor() as cursor:
+        cursor.execute("DELETE FROM memberships WHERE membership_id = ?", (membership_id,))
         return cursor.rowcount > 0
 
 

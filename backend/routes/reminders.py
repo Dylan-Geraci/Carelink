@@ -1,7 +1,8 @@
 # /reminders - in-app medication & appointment reminders (M3)
 
 import crud
-from fastapi import APIRouter, HTTPException, status
+from deps import get_patient_id
+from fastapi import APIRouter, Depends, HTTPException, status
 from models import Reminder, ReminderCreate, ReminderListResponse, ReminderUpdate
 
 router = APIRouter(prefix="/api", tags=["reminders"])
@@ -23,15 +24,16 @@ def _validate(kind: str, recurrence: str, due_ts, time_of_day):
 
 
 @router.get("/reminders", response_model=ReminderListResponse)
-async def list_reminders(include_inactive: bool = False):
+async def list_reminders(include_inactive: bool = False,
+                         patient_id: str = Depends(get_patient_id)):
     try:
-        return ReminderListResponse(reminders=crud.get_reminders(include_inactive))
+        return ReminderListResponse(reminders=crud.get_reminders(patient_id, include_inactive))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list reminders: {str(e)}")
 
 
 @router.post("/reminders", response_model=Reminder, status_code=status.HTTP_201_CREATED)
-async def create_reminder(req: ReminderCreate):
+async def create_reminder(req: ReminderCreate, patient_id: str = Depends(get_patient_id)):
     _validate(req.kind, req.recurrence, req.due_ts, req.time_of_day)
     try:
         return crud.create_reminder(
@@ -41,6 +43,7 @@ async def create_reminder(req: ReminderCreate):
             due_ts=req.due_ts,
             time_of_day=req.time_of_day,
             notes=req.notes,
+            patient_id=patient_id,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create reminder: {str(e)}")

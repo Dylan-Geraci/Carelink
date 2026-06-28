@@ -190,6 +190,59 @@ class Reminder(BaseModel):
 class ReminderListResponse(BaseModel):
     reminders: List[Reminder]
 
+
+# Local multi-profile team collaboration (M4)
+
+
+class Caregiver(BaseModel):
+    caregiver_id: str
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+    created_ts: int
+
+
+class CaregiverSyncRequest(BaseModel):
+    caregiver_id: str
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+
+
+class PatientWithRole(BaseModel):
+    patient_id: str
+    name: str
+    role: str                               # 'owner' | 'caregiver'
+
+
+class PatientCreate(BaseModel):
+    name: str
+
+
+class CaregiverSyncResponse(BaseModel):
+    caregiver: Caregiver
+    patients: List[PatientWithRole]
+
+
+class PatientListResponse(BaseModel):
+    patients: List[PatientWithRole]
+
+
+class Member(BaseModel):
+    membership_id: int
+    caregiver_id: Optional[str] = None
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+    role: str                               # 'owner' | 'caregiver'
+    status: str                             # 'active' | 'pending'
+
+
+class MemberListResponse(BaseModel):
+    members: List[Member]
+
+
+class MemberInviteRequest(BaseModel):
+    email: str
+    role: str = "caregiver"
+
 # Database Models (for internal use)
 
 

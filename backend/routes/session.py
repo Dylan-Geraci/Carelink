@@ -5,7 +5,8 @@ from models import (
     StoreSessionRequest, SessionDetail, SessionListResponse
 )
 import crud
-from fastapi import APIRouter, HTTPException, status
+from deps import get_patient_id
+from fastapi import APIRouter, Depends, HTTPException, status
 
 
 router = APIRouter(prefix="/api", tags=["sessions"])
@@ -90,10 +91,11 @@ async def get_session(session_id: str):
 
 
 @router.get("/sessions", response_model=SessionListResponse)
-async def get_sessions(limit: int = 100, offset: int = 0):
-    """Get list of sessions with summary snippets."""
+async def get_sessions(limit: int = 100, offset: int = 0,
+                       patient_id: str = Depends(get_patient_id)):
+    """Get list of sessions (for the active patient) with summary snippets."""
     try:
-        sessions = crud.get_sessions_list(limit, offset)
+        sessions = crud.get_sessions_list(patient_id, limit, offset)
         return SessionListResponse(sessions=sessions)
     except Exception as e:
         raise HTTPException(

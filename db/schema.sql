@@ -5,9 +5,11 @@ CREATE TABLE sessions (
   session_type TEXT NOT NULL,         -- Medication, Conversation, etc.
   start_ts     INTEGER NOT NULL,      -- epoch ms
   end_ts       INTEGER,               -- nullable
-  notes        TEXT
+  notes        TEXT,
+  patient_id   TEXT                   -- M4: owning patient (FK patients); backfilled to p_default
 );
 CREATE INDEX idx_sessions_start ON sessions(start_ts);
+CREATE INDEX idx_sessions_patient ON sessions(patient_id);
 
 CREATE TABLE audio_chunks (
   chunk_id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +70,39 @@ CREATE TABLE IF NOT EXISTS reminders (
   notes         TEXT,
   last_done_ts  INTEGER,                       -- epoch ms last marked done
   active        INTEGER NOT NULL DEFAULT 1,
-  created_ts    INTEGER NOT NULL
+  created_ts    INTEGER NOT NULL,
+  patient_id    TEXT                           -- M4: owning patient; backfilled to p_default
 );
 CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(active);
+
+-- M4: local multi-profile team collaboration. Caregivers (identity from the
+-- frontend's Firebase user, or a local fallback), patients (care recipients),
+-- and memberships linking them with a role. The backend is a trusted-local
+-- service (no token verification); ownership/roles are modelled here and also
+-- gated in the UI. Invitations are by email and bind on the invitee's first
+-- sync (status 'pending' -> 'active'). All IF NOT EXISTS for live migration.
+CREATE TABLE IF NOT EXISTS caregivers (
+  caregiver_id  TEXT PRIMARY KEY,              -- firebase uid, or 'local-caregiver'
+  email         TEXT,
+  display_name  TEXT,
+  created_ts    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS patients (
+  patient_id    TEXT PRIMARY KEY,              -- uuid (or 'p_default' for backfill)
+  name          TEXT NOT NULL,
+  created_by    TEXT,                          -- caregiver_id
+  created_ts    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memberships (
+  membership_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  patient_id    TEXT NOT NULL,
+  caregiver_id  TEXT,                          -- null until a pending invite is claimed
+  invited_email TEXT,                          -- set for invites; matched on sync
+  role          TEXT NOT NULL DEFAULT 'caregiver', -- 'owner' | 'caregiver'
+  status        TEXT NOT NULL DEFAULT 'active',    -- 'active' | 'pending'
+  created_ts    INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_membership_caregiver ON memberships(patient_id, caregiver_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_membership_invite ON memberships(patient_id, invited_email);

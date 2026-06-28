@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { api, SessionListItem, RecordAudioResponse, ProcessSessionResponse, TrendsResponse } from "@/lib/api"
 import { InsightsPanel } from "@/components/insights-panel"
 import { RemindersPanel } from "@/components/reminders-panel"
+import { PatientBar } from "@/components/care-circle"
+import { usePatient } from "@/components/providers/patient-provider"
 import { useAudioRecording } from "@/hooks/useAudioRecording"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -147,6 +149,9 @@ export default function Component() {
   // Use the audio recording hook
   const audioRecording = useAudioRecording()
 
+  // M4: active patient — drives which patient's data the panels load.
+  const { activePatientId, loading: patientLoading } = usePatient()
+
   // Pending 30s auto-stop timer, and a re-entrancy guard so a double-tap (or the
   // auto-stop firing alongside a manual stop) can't run the stop flow twice and
   // clobber a successful recording with a spurious "No audio data recorded".
@@ -169,8 +174,14 @@ export default function Component() {
     return () => clearInterval(interval)
   }, [])
 
-  // Load sessions from API
+  // Load sessions for the active patient (reloads when the patient switches).
   useEffect(() => {
+    if (patientLoading) return
+    if (!activePatientId) {
+      setSessions([])
+      setIsLoadingSessions(false)
+      return
+    }
     const loadSessions = async () => {
       try {
         setIsLoadingSessions(true)
@@ -185,7 +196,7 @@ export default function Component() {
     }
 
     loadSessions()
-  }, [])
+  }, [activePatientId, patientLoading])
 
   // Epoch ms of the local Sunday 00:00 for the current week (matches the
   // backend week buckets and the export presets).
@@ -196,8 +207,15 @@ export default function Component() {
     return week.getTime()
   }
 
-  // Load trend aggregates: this-week (badge + highlights) and all-time (panel).
+  // Load trend aggregates for the active patient: this-week (badge + highlights)
+  // and all-time (panel). Reloads when the patient switches.
   const loadTrends = useCallback(async () => {
+    if (!activePatientId) {
+      setWeekTrends(null)
+      setAllTrends(null)
+      setIsLoadingTrends(false)
+      return
+    }
     try {
       setIsLoadingTrends(true)
       const [week, all] = await Promise.all([
@@ -211,11 +229,12 @@ export default function Component() {
     } finally {
       setIsLoadingTrends(false)
     }
-  }, [])
+  }, [activePatientId])
 
   useEffect(() => {
+    if (patientLoading) return
     loadTrends()
-  }, [loadTrends])
+  }, [loadTrends, patientLoading])
 
   // Generate a care-summary PDF for an optional epoch-ms range and download it.
   const handleExportReport = async (fromTs?: number, toTs?: number) => {
@@ -776,6 +795,9 @@ export default function Component() {
                         Carelink
                       </h1>
                       <p className="text-gray-500 text-lg font-light">Your care journey, documented with love</p>
+                      <div className="mt-4">
+                        <PatientBar />
+                      </div>
                     </div>
                     <div className="text-right">
                       {weekTrends && weekTrends.total_sessions > 0 && weekTrends.calm_label !== "No data" && (
@@ -993,7 +1015,7 @@ export default function Component() {
               {/* Right column — reminders (M3) above insights (M2) */}
               <div className="hidden lg:block w-1/3 p-8">
                 <div className="sticky top-8 space-y-6">
-                  <RemindersPanel />
+                  <RemindersPanel patientId={activePatientId} />
                   <InsightsPanel trends={allTrends} isLoading={isLoadingTrends} />
                 </div>
               </div>

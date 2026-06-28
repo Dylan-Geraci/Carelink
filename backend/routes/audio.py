@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Header
 from fastapi.responses import JSONResponse
 import os
 import shutil
@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 async def record_audio(
     audio: UploadFile = File(...),
     patient_id: str = Form("default_patient"),
-    session_type: str = Form("freeform")
+    session_type: str = Form("freeform"),
+    x_patient_id: str | None = Header(default=None),
 ):
     """
     Upload audio file, transcribe it, and return transcript with metadata.
@@ -103,11 +104,15 @@ async def record_audio(
 
         # Store in database
         with database.db_cursor() as cursor:
-            # Create session record (matching actual schema)
+            # Create session record. The owning patient (the M4 active patient)
+            # comes from the X-Patient-Id header; default keeps pre-M4 behavior.
+            from database import DEFAULT_PATIENT_ID
+            owner_patient = x_patient_id or DEFAULT_PATIENT_ID
             cursor.execute(
-                """INSERT INTO sessions (session_id, session_type, start_ts, notes)
-                   VALUES (?, ?, ?, ?)""",
-                (session_id, session_type, int(datetime.now().timestamp() * 1000), f"Patient: {patient_id}")
+                """INSERT INTO sessions (session_id, session_type, start_ts, notes, patient_id)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (session_id, session_type, int(datetime.now().timestamp() * 1000),
+                 f"Patient: {patient_id}", owner_patient)
             )
 
             # Store audio chunk (check actual table structure)

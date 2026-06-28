@@ -2,21 +2,23 @@
 
 import crud
 import trends
-from fastapi import APIRouter, HTTPException, status
+from deps import get_patient_id
+from fastapi import APIRouter, Depends, HTTPException, status
 from models import TrendsResponse
 
 router = APIRouter(prefix="/api", tags=["trends"])
 
 
 @router.get("/trends", response_model=TrendsResponse)
-async def get_trends(from_ts: int | None = None, to_ts: int | None = None):
-    """Aggregate summarized sessions over an optional epoch-ms range.
+async def get_trends(from_ts: int | None = None, to_ts: int | None = None,
+                     patient_id: str = Depends(get_patient_id)):
+    """Aggregate summarized sessions (for the active patient) over an optional range.
 
     Always 200 with a valid (possibly empty) payload — an empty range yields
     zero sessions and a "No data" calm label rather than an error.
     """
     try:
-        rows = crud.get_trend_sessions(from_ts, to_ts)
+        rows = crud.get_trend_sessions(patient_id, from_ts, to_ts)
         return trends.compute_trends(rows, from_ts, to_ts)
     except Exception as e:
         raise HTTPException(

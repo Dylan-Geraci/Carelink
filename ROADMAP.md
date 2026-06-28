@@ -53,11 +53,25 @@ Medication / appointment scheduling + reminders. **In-app only** (offline app �
       toggle) and a Manage-all dialog. Occurrence/overdue status is derived against a live
       clock on the client (re-ticks each minute), not stored.
 
-### M4 — Team collaboration
-Multiple caregivers, shared records, role-based access.
-- [ ] Real users/patients/roles model (depends on enforcing Firebase auth backend-side).
-- [ ] Replace hardcoded `patient_id = "default_patient"` with real ownership.
-- [ ] Invitations + per-role permissions.
+### M4 — Team collaboration ✅ done (2026-06-28)
+Local multi-profile: multiple caregivers, shared records, Owner/Caregiver roles. **In-app /
+trusted-local** — the backend stays unauthenticated (a local single-machine service); ownership
+and roles are modelled in data and gated in the UI. No cloud sync (true to the offline ethos).
+- [x] Data model: `caregivers`, `patients`, `memberships` tables + `patient_id` on
+      `sessions`/`reminders` (idempotent migration in `database.py` backfills all pre-M4 data to a
+      `p_default` "My patient").
+- [x] Replaced the hardcoded `default_patient`: every read/write (`sessions`, `trends`,
+      `reminders`, `export`) is scoped by the active patient via the `X-Patient-Id` header
+      (`deps.py`); session creation tags the active patient.
+- [x] Identity: caregiver from the Firebase user, or a `local-caregiver` fallback when Firebase
+      isn't configured. `POST /api/caregivers/sync` upserts + reconciles email invites; the first
+      caregiver to sync claims the default patient.
+- [x] Invitations + per-role permissions: `routes/patients.py` (list/create patients,
+      list/invite-by-email/remove members) with owner-only enforcement and a last-owner guard.
+      Frontend: `PatientProvider`, a patient switcher + "Care circle" dialog (`care-circle.tsx`),
+      role-gated.
+- **Known limitation:** switching from the offline `local-caregiver` to a Firebase account later
+  won't auto-transfer ownership of the default patient (first-claimer keeps it).
 
 ## 🧹 Cleanup / honesty backlog
 

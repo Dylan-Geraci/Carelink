@@ -4,21 +4,23 @@ from datetime import datetime
 
 import crud
 import report
-from fastapi import APIRouter, HTTPException, status
+from deps import get_patient_id
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 
 router = APIRouter(prefix="/api", tags=["export"])
 
 
 @router.get("/export/report")
-async def export_report(from_ts: int | None = None, to_ts: int | None = None):
-    """Generate a care-summary PDF over an optional epoch-ms range.
+async def export_report(from_ts: int | None = None, to_ts: int | None = None,
+                        patient_id: str = Depends(get_patient_id)):
+    """Generate a care-summary PDF (for the active patient) over an optional range.
 
     Returns `application/pdf` as a file download. Always 200 with a valid PDF
     (an empty range yields a 'no sessions' document rather than an error).
     """
     try:
-        rows = crud.get_report_sessions(from_ts, to_ts)
+        rows = crud.get_report_sessions(patient_id, from_ts, to_ts)
         pdf_bytes = report.build_care_report_pdf(rows, from_ts, to_ts)
         filename = f"carelink-care-report-{datetime.now():%Y%m%d}.pdf"
         return Response(

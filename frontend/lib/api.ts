@@ -146,17 +146,84 @@ export interface ReminderListResponse {
   reminders: Reminder[]
 }
 
+// Local multi-profile (M4) — must stay in sync with backend/models.py
+export type Role = "owner" | "caregiver"
+
+export interface Caregiver {
+  caregiver_id: string
+  email?: string | null
+  display_name?: string | null
+  created_ts: number
+}
+
+export interface PatientWithRole {
+  patient_id: string
+  name: string
+  role: Role
+}
+
+export interface CaregiverSyncResponse {
+  caregiver: Caregiver
+  patients: PatientWithRole[]
+}
+
+export interface PatientListResponse {
+  patients: PatientWithRole[]
+}
+
+export interface Member {
+  membership_id: number
+  caregiver_id?: string | null
+  email?: string | null
+  display_name?: string | null
+  role: Role
+  status: "active" | "pending"
+}
+
+export interface MemberListResponse {
+  members: Member[]
+}
+
 // API client functions
 export class CarelinkAPI {
   private baseUrl: string
+  private caregiverId?: string
+  private activePatientId?: string
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl
   }
 
+  // M4: identity for the trusted-local backend. Set once on login and whenever
+  // the active patient changes; injected as headers on every request so reads
+  // and writes are scoped to the right caregiver + patient.
+  setCaregiverId(caregiverId?: string) {
+    this.caregiverId = caregiverId
+  }
+
+  setActivePatient(patientId?: string) {
+    this.activePatientId = patientId
+  }
+
+  private authHeaders(): Record<string, string> {
+    const h: Record<string, string> = {}
+    if (this.caregiverId) h["X-Caregiver-Id"] = this.caregiverId
+    if (this.activePatientId) h["X-Patient-Id"] = this.activePatientId
+    return h
+  }
+
+  // Single fetch entry point so identity headers ride along on every call.
+  private request(path: string, init: RequestInit = {}): Promise<Response> {
+    const url = path.startsWith("http") ? path : `${this.baseUrl}${path}`
+    return fetch(url, {
+      ...init,
+      headers: { ...this.authHeaders(), ...(init.headers || {}) },
+    })
+  }
+
   // Session management
   async startSession(request: StartSessionRequest): Promise<StartSessionResponse> {
-    const response = await fetch(`${this.baseUrl}/start-session`, {
+    const response = await this.request(`/start-session`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -172,7 +239,7 @@ export class CarelinkAPI {
   }
 
   async getSessions(limit: number = 100, offset: number = 0): Promise<SessionListResponse> {
-    const response = await fetch(`${this.baseUrl}/sessions?limit=${limit}&offset=${offset}`)
+    const response = await this.request(`/sessions?limit=${limit}&offset=${offset}`)
     
     if (!response.ok) {
       throw new Error(`Failed to get sessions: ${await errorDetail(response)}`)
@@ -182,7 +249,7 @@ export class CarelinkAPI {
   }
 
   async getSession(sessionId: string): Promise<SessionDetail> {
-    const response = await fetch(`${this.baseUrl}/session/${sessionId}`)
+    const response = await this.request(`/session/${sessionId}`)
     
     if (!response.ok) {
       throw new Error(`Failed to get session: ${await errorDetail(response)}`)
@@ -198,7 +265,7 @@ export class CarelinkAPI {
     formData.append('session_type', sessionType)
     formData.append('patient_id', patientId)
 
-    const response = await fetch(`${this.baseUrl}/record-audio`, {
+    const response = await this.request(`/record-audio`, {
       method: 'POST',
       body: formData,
     })
@@ -211,7 +278,7 @@ export class CarelinkAPI {
   }
 
   async processSession(request: ProcessSessionRequest): Promise<ProcessSessionResponse> {
-    const response = await fetch(`${this.baseUrl}/process-session`, {
+    const response = await this.request(`/process-session`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -228,7 +295,7 @@ export class CarelinkAPI {
 
   // Transcription (legacy method)
   async transcribeAudio(request: TranscribeRequest): Promise<TranscribeResponse> {
-    const response = await fetch(`${this.baseUrl}/transcribe`, {
+    const response = await this.request(`/transcribe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -250,7 +317,7 @@ export class CarelinkAPI {
     if (fromTs) qs.set('from_ts', String(fromTs))
     if (toTs) qs.set('to_ts', String(toTs))
     const query = qs.toString()
-    const response = await fetch(`${this.baseUrl}/export/report${query ? `?${query}` : ''}`)
+    const response = await this.request(`/export/report${query ? `?${query}` : ''}`)
 
     if (!response.ok) {
       throw new Error(`Failed to export report: ${await errorDetail(response)}`)
@@ -265,7 +332,7 @@ export class CarelinkAPI {
     if (fromTs) qs.set('from_ts', String(fromTs))
     if (toTs) qs.set('to_ts', String(toTs))
     const query = qs.toString()
-    const response = await fetch(`${this.baseUrl}/trends${query ? `?${query}` : ''}`)
+    const response = await this.request(`/trends${query ? `?${query}` : ''}`)
 
     if (!response.ok) {
       throw new Error(`Failed to get trends: ${await errorDetail(response)}`)
@@ -277,13 +344,13 @@ export class CarelinkAPI {
   // ── Reminders (M3) ──────────────────────────────────────────────────────
   async getReminders(includeInactive = false): Promise<ReminderListResponse> {
     const qs = includeInactive ? "?include_inactive=true" : ""
-    const response = await fetch(`${this.baseUrl}/reminders${qs}`)
+    const response = await this.request(`/reminders${qs}`)
     if (!response.ok) throw new Error(`Failed to load reminders: ${await errorDetail(response)}`)
     return response.json()
   }
 
   async createReminder(reminder: ReminderCreate): Promise<Reminder> {
-    const response = await fetch(`${this.baseUrl}/reminders`, {
+    const response = await this.request(`/reminders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(reminder),
@@ -293,15 +360,65 @@ export class CarelinkAPI {
   }
 
   async completeReminder(reminderId: number): Promise<Reminder> {
-    const response = await fetch(`${this.baseUrl}/reminders/${reminderId}/done`, { method: "POST" })
+    const response = await this.request(`/reminders/${reminderId}/done`, { method: "POST" })
     if (!response.ok) throw new Error(`Failed to update reminder: ${await errorDetail(response)}`)
     return response.json()
   }
 
   async deleteReminder(reminderId: number): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/reminders/${reminderId}`, { method: "DELETE" })
+    const response = await this.request(`/reminders/${reminderId}`, { method: "DELETE" })
     if (!response.ok && response.status !== 204) {
       throw new Error(`Failed to delete reminder: ${await errorDetail(response)}`)
+    }
+  }
+
+  // ── Caregivers / patients / members (M4) ─────────────────────────────────
+  async syncCaregiver(caregiverId: string, email?: string | null, displayName?: string | null): Promise<CaregiverSyncResponse> {
+    const response = await this.request(`/caregivers/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ caregiver_id: caregiverId, email: email ?? null, display_name: displayName ?? null }),
+    })
+    if (!response.ok) throw new Error(`Failed to sync caregiver: ${await errorDetail(response)}`)
+    return response.json()
+  }
+
+  async getPatients(): Promise<PatientListResponse> {
+    const response = await this.request(`/patients`)
+    if (!response.ok) throw new Error(`Failed to load patients: ${await errorDetail(response)}`)
+    return response.json()
+  }
+
+  async createPatient(name: string): Promise<PatientWithRole> {
+    const response = await this.request(`/patients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    })
+    if (!response.ok) throw new Error(`Failed to create patient: ${await errorDetail(response)}`)
+    return response.json()
+  }
+
+  async getMembers(patientId: string): Promise<MemberListResponse> {
+    const response = await this.request(`/patients/${patientId}/members`)
+    if (!response.ok) throw new Error(`Failed to load care circle: ${await errorDetail(response)}`)
+    return response.json()
+  }
+
+  async inviteMember(patientId: string, email: string, role: Role = "caregiver"): Promise<Member> {
+    const response = await this.request(`/patients/${patientId}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, role }),
+    })
+    if (!response.ok) throw new Error(`${await errorDetail(response)}`)
+    return response.json()
+  }
+
+  async removeMember(patientId: string, membershipId: number): Promise<void> {
+    const response = await this.request(`/patients/${patientId}/members/${membershipId}`, { method: "DELETE" })
+    if (!response.ok && response.status !== 204) {
+      throw new Error(`Failed to remove member: ${await errorDetail(response)}`)
     }
   }
 

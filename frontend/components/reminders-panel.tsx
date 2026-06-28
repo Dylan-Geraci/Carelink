@@ -71,7 +71,7 @@ const KindIcon = ({ kind }: { kind: ReminderKind }) =>
     <CalendarClock className="h-4 w-4" style={{ color: TEAL }} />
   )
 
-export function RemindersPanel() {
+export function RemindersPanel({ patientId }: { patientId?: string }) {
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(() => Date.now())
@@ -90,9 +90,10 @@ export function RemindersPanel() {
     }
   }, [])
 
+  // Reload when the active patient changes (the API client carries the header).
   useEffect(() => {
     load()
-  }, [load])
+  }, [load, patientId])
 
   // Keep overdue/upcoming transitions live without a refetch.
   useEffect(() => {
