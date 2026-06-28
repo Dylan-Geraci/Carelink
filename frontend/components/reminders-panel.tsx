@@ -12,13 +12,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { api, type Reminder, type ReminderKind } from "@/lib/api"
+import { api, type Reminder, type ReminderKind, type ReminderRecurrence } from "@/lib/api"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Care reminders (M3) — in-app only (offline app, no push). Surfaces what's due
-// on the home screen and lets a caregiver add meds (daily) / appointments
-// (one-off), mark them done, and remove them. Occurrence + overdue status is
-// derived against a live clock here, not stored. Cohesive with InsightsPanel.
+// on the home screen and lets a caregiver add meds (recurring: every day / other
+// day / weekly) / appointments (one-off), mark them done, and remove them.
+// Occurrence + overdue status is derived against a live clock here, not stored.
+// Cohesive with InsightsPanel.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const INK = "#546A7B"
@@ -28,6 +29,20 @@ const HAIRLINE = "#ECEAE4"
 
 type Status = "overdue" | "today" | "upcoming" | "done"
 type Resolved = { reminder: Reminder; status: Status; nextTs: number; dueLabel: string }
+
+// Medication cadences offered in the Add dialog. interval = days between doses.
+type MedRecurrence = Exclude<ReminderRecurrence, "once">
+const MED_CADENCES: { value: MedRecurrence; label: string; interval: number }[] = [
+  { value: "daily", label: "Every day", interval: 1 },
+  { value: "every_other_day", label: "Every other day", interval: 2 },
+  { value: "weekly", label: "Weekly", interval: 7 },
+]
+
+// Local 'yyyy-mm-dd' for <input type="date"> (avoids the UTC shift of toISOString).
+const todayISODate = () => {
+  const d = new Date()
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}
 
 const startOfDay = (ts: number) => {
   const d = new Date(ts)
@@ -41,20 +56,51 @@ const fmtTime = (ts: number) =>
 const fmtDate = (ts: number) =>
   new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" })
 
-// Today's epoch ms for a daily 'HH:MM' (local), relative to `now`.
-const dailyOccurrence = (timeOfDay: string, now: number) => {
+const DAY = 86_400_000
+
+// Apply an 'HH:MM' local time onto a local-midnight day (epoch ms).
+const atTimeOnDay = (day0: number, timeOfDay: string) => {
   const [h, m] = timeOfDay.split(":").map(Number)
-  const d = new Date(now)
-  d.setHours(h || 0, m || 0, 0, 0)
-  return d.getTime()
+  return day0 + (h || 0) * 3_600_000 + (m || 0) * 60_000
+}
+
+const cadenceLabel = (interval: number) =>
+  interval === 1
+    ? "Every day"
+    : interval === 2
+      ? "Every other day"
+      : interval === 7
+        ? "Weekly"
+        : `Every ${interval} days`
+
+// Where `day0` falls in the cadence counted from the start anchor.
+const onDay = (anchor0: number, interval: number, day0: number) => {
+  const since = Math.round((day0 - anchor0) / DAY)
+  const rem = ((since % interval) + interval) % interval
+  return { isOn: since >= 0 && rem === 0, daysUntilNext: rem === 0 ? 0 : interval - rem }
 }
 
 function resolve(reminder: Reminder, now: number): Resolved {
-  if (reminder.recurrence === "daily" && reminder.time_of_day) {
-    const occ = dailyOccurrence(reminder.time_of_day, now)
+  // Recurring medication: a dose every `interval_days` days at `time_of_day`,
+  // counted from the `due_ts` start anchor (which also pins the weekday).
+  if (reminder.recurrence !== "once" && reminder.time_of_day) {
+    const interval = reminder.interval_days && reminder.interval_days > 0 ? reminder.interval_days : 1
+    const anchor0 = startOfDay(reminder.due_ts ?? reminder.created_ts)
+    const today0 = startOfDay(now)
+    const { isOn } = onDay(anchor0, interval, today0)
+    const occToday = atTimeOnDay(today0, reminder.time_of_day)
     const doneToday = reminder.last_done_ts != null && sameDay(reminder.last_done_ts, now)
-    const status: Status = doneToday ? "done" : now >= occ ? "overdue" : "today"
-    return { reminder, status, nextTs: occ, dueLabel: `Every day · ${fmtTime(occ)}` }
+    const cadence = cadenceLabel(interval)
+
+    if (isOn && !doneToday) {
+      const status: Status = now >= occToday ? "overdue" : "today"
+      return { reminder, status, nextTs: occToday, dueLabel: `${cadence} · ${fmtTime(occToday)}` }
+    }
+    // Done for today, or today isn't a scheduled day — point to the next dose.
+    const stepDays = isOn ? interval : onDay(anchor0, interval, today0).daysUntilNext
+    const nextOcc = atTimeOnDay(today0 + stepDays * DAY, reminder.time_of_day)
+    const status: Status = doneToday ? "done" : "upcoming"
+    return { reminder, status, nextTs: nextOcc, dueLabel: `${cadence} · next ${fmtDate(nextOcc)}, ${fmtTime(nextOcc)}` }
   }
   // one-off appointment
   const due = reminder.due_ts ?? now
@@ -240,7 +286,9 @@ function AddReminderDialog({
 }) {
   const [kind, setKind] = useState<ReminderKind>("medication")
   const [title, setTitle] = useState("")
+  const [cadence, setCadence] = useState<MedRecurrence>("daily")
   const [timeOfDay, setTimeOfDay] = useState("08:00")
+  const [startDate, setStartDate] = useState("")
   const [dateTime, setDateTime] = useState("")
   const [notes, setNotes] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -251,25 +299,39 @@ function AddReminderDialog({
     if (open) {
       setKind("medication")
       setTitle("")
+      setCadence("daily")
       setTimeOfDay("08:00")
+      setStartDate(todayISODate())
       setDateTime("")
       setNotes("")
       setError(null)
     }
   }, [open])
 
+  // 'daily' repeats every day, so the start date is irrelevant; other cadences
+  // count from a start date that also fixes the weekday for 'weekly'.
+  const needsStart = kind === "medication" && cadence !== "daily"
+
   const save = async () => {
     if (!title.trim()) return setError("Give the reminder a name.")
     if (kind === "appointment" && !dateTime) return setError("Pick a date and time.")
+    if (needsStart && !startDate) return setError("Pick a start date.")
     setError(null)
     setSaving(true)
     try {
+      const interval = MED_CADENCES.find((c) => c.value === cadence)?.interval ?? 1
       await api.createReminder({
         title: title.trim(),
         kind,
-        recurrence: kind === "medication" ? "daily" : "once",
+        recurrence: kind === "medication" ? cadence : "once",
+        interval_days: kind === "medication" ? interval : null,
         time_of_day: kind === "medication" ? timeOfDay : null,
-        due_ts: kind === "appointment" ? new Date(dateTime).getTime() : null,
+        due_ts:
+          kind === "appointment"
+            ? new Date(dateTime).getTime()
+            : needsStart
+              ? new Date(`${startDate}T00:00`).getTime()
+              : null,
         notes: notes.trim() || null,
       })
       onCreated()
@@ -322,15 +384,47 @@ function AddReminderDialog({
           </label>
 
           {kind === "medication" ? (
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium text-gray-600">Time (every day)</span>
-              <input
-                type="time"
-                value={timeOfDay}
-                onChange={(e) => setTimeOfDay(e.target.value)}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-[#8BAAAD] focus:outline-none"
-              />
-            </label>
+            <>
+              <div className="grid grid-cols-[1fr_auto] gap-3">
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium text-gray-600">Repeat</span>
+                  <select
+                    value={cadence}
+                    onChange={(e) => setCadence(e.target.value as MedRecurrence)}
+                    className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-[#8BAAAD] focus:outline-none"
+                  >
+                    {MED_CADENCES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium text-gray-600">Time</span>
+                  <input
+                    type="time"
+                    value={timeOfDay}
+                    onChange={(e) => setTimeOfDay(e.target.value)}
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-[#8BAAAD] focus:outline-none"
+                  />
+                </label>
+              </div>
+              {needsStart && (
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium text-gray-600">Starting</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-[#8BAAAD] focus:outline-none"
+                  />
+                  <span className="text-xs text-gray-400">
+                    {cadence === "weekly" ? "Repeats this weekday." : "Counts from this day."}
+                  </span>
+                </label>
+              )}
+            </>
           ) : (
             <label className="grid gap-1 text-sm">
               <span className="font-medium text-gray-600">When</span>

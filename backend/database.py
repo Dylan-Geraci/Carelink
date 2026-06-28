@@ -58,6 +58,7 @@ def _run_migrations(conn):
           title         TEXT NOT NULL,
           kind          TEXT NOT NULL,
           recurrence    TEXT NOT NULL DEFAULT 'once',
+          interval_days INTEGER,
           due_ts        INTEGER,
           time_of_day   TEXT,
           notes         TEXT,
@@ -100,8 +101,14 @@ def _run_migrations(conn):
     # that predates ownership to a single default patient.
     _add_column_if_missing(conn, "sessions", "patient_id", "TEXT")
     _add_column_if_missing(conn, "reminders", "patient_id", "TEXT")
+    _add_column_if_missing(conn, "reminders", "interval_days", "INTEGER")  # flexible med cadence
     _add_column_if_missing(conn, "summaries", "tags", "TEXT")  # M5 cleanup: editable tags
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_patient ON sessions(patient_id)")
+
+    # Pre-cadence 'daily' reminders had no interval; they recur once a day.
+    conn.execute(
+        "UPDATE reminders SET interval_days = 1 "
+        "WHERE interval_days IS NULL AND recurrence = 'daily'")
 
     now = int(time.time() * 1000)
     conn.execute(

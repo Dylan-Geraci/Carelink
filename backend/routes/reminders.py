@@ -8,19 +8,37 @@ from models import Reminder, ReminderCreate, ReminderListResponse, ReminderUpdat
 router = APIRouter(prefix="/api", tags=["reminders"])
 
 _KINDS = {"medication", "appointment"}
-_RECURRENCES = {"once", "daily"}
+# Recurring medication cadences map to a fixed day interval. 'once' is a one-off.
+_INTERVAL_BY_RECURRENCE = {"daily": 1, "every_other_day": 2, "weekly": 7}
+_RECURRENCES = {"once", *_INTERVAL_BY_RECURRENCE}
 
 
-def _validate(kind: str, recurrence: str, due_ts, time_of_day):
+def _resolve_interval(recurrence: str, interval_days):
+    """Cadence in days for a recurring reminder. Prefer the explicit interval,
+    else derive from the recurrence label. Returns None for one-offs."""
+    if recurrence == "once":
+        return None
+    if interval_days is not None:
+        return interval_days
+    return _INTERVAL_BY_RECURRENCE.get(recurrence)
+
+
+def _validate(kind: str, recurrence: str, interval_days, due_ts, time_of_day):
     """Shared validation for create. Raises 400 with a caregiver-readable detail."""
     if kind not in _KINDS:
         raise HTTPException(status_code=400, detail=f"kind must be one of {sorted(_KINDS)}")
     if recurrence not in _RECURRENCES:
         raise HTTPException(status_code=400, detail=f"recurrence must be one of {sorted(_RECURRENCES)}")
-    if recurrence == "once" and due_ts is None:
-        raise HTTPException(status_code=400, detail="A one-off reminder needs a due date and time.")
-    if recurrence == "daily" and not time_of_day:
-        raise HTTPException(status_code=400, detail="A daily reminder needs a time of day.")
+    if recurrence == "once":
+        if due_ts is None:
+            raise HTTPException(status_code=400, detail="A one-off reminder needs a due date and time.")
+        return
+    # Recurring (medication) — needs a time of day and a positive cadence.
+    if not time_of_day:
+        raise HTTPException(status_code=400, detail="A recurring reminder needs a time of day.")
+    interval = _resolve_interval(recurrence, interval_days)
+    if interval is None or interval < 1:
+        raise HTTPException(status_code=400, detail="Repeat interval must be at least 1 day.")
 
 
 @router.get("/reminders", response_model=ReminderListResponse)
@@ -34,12 +52,13 @@ async def list_reminders(include_inactive: bool = False,
 
 @router.post("/reminders", response_model=Reminder, status_code=status.HTTP_201_CREATED)
 async def create_reminder(req: ReminderCreate, patient_id: str = Depends(get_patient_id)):
-    _validate(req.kind, req.recurrence, req.due_ts, req.time_of_day)
+    _validate(req.kind, req.recurrence, req.interval_days, req.due_ts, req.time_of_day)
     try:
         return crud.create_reminder(
             title=req.title.strip(),
             kind=req.kind,
             recurrence=req.recurrence,
+            interval_days=_resolve_interval(req.recurrence, req.interval_days),
             due_ts=req.due_ts,
             time_of_day=req.time_of_day,
             notes=req.notes,

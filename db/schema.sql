@@ -57,17 +57,19 @@ CREATE TABLE trend_cache (
 );
 
 -- M3: smart reminders. In-app only (offline app — no push/email). Two kinds:
--- 'medication' (recurrence 'daily' at time_of_day 'HH:MM' local) and
--- 'appointment' (recurrence 'once' at absolute due_ts epoch ms). Occurrence/
--- overdue status is computed against the live clock on the client, not stored.
+-- 'medication' (recurring at time_of_day 'HH:MM' local, every interval_days days
+-- counted from the due_ts start anchor) and 'appointment' (recurrence 'once' at
+-- absolute due_ts epoch ms). Occurrence/overdue status is computed against the
+-- live clock on the client, not stored.
 -- IF NOT EXISTS so the live migration in database.py is idempotent on old DBs.
 CREATE TABLE IF NOT EXISTS reminders (
   reminder_id   INTEGER PRIMARY KEY AUTOINCREMENT,
   title         TEXT NOT NULL,
   kind          TEXT NOT NULL,                 -- 'medication' | 'appointment'
-  recurrence    TEXT NOT NULL DEFAULT 'once',  -- 'once' | 'daily'
-  due_ts        INTEGER,                       -- one-off: absolute epoch ms
-  time_of_day   TEXT,                          -- daily: 'HH:MM' local
+  recurrence    TEXT NOT NULL DEFAULT 'once',  -- 'once' | 'daily' | 'every_other_day' | 'weekly'
+  interval_days INTEGER,                       -- recurring: days between doses (1/2/7); NULL for one-off
+  due_ts        INTEGER,                       -- one-off: absolute epoch ms; recurring: start anchor (sets weekday)
+  time_of_day   TEXT,                          -- recurring: 'HH:MM' local
   notes         TEXT,
   last_done_ts  INTEGER,                       -- epoch ms last marked done
   active        INTEGER NOT NULL DEFAULT 1,

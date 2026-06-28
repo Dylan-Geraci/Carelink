@@ -332,6 +332,7 @@ def _row_to_reminder(row) -> Reminder:
         title=row["title"],
         kind=row["kind"],
         recurrence=row["recurrence"],
+        interval_days=row["interval_days"],
         due_ts=row["due_ts"],
         time_of_day=row["time_of_day"],
         notes=row["notes"],
@@ -342,6 +343,7 @@ def _row_to_reminder(row) -> Reminder:
 
 
 def create_reminder(title: str, kind: str, recurrence: str = "once",
+                    interval_days: Optional[int] = None,
                     due_ts: Optional[int] = None, time_of_day: Optional[str] = None,
                     notes: Optional[str] = None,
                     patient_id: str = DEFAULT_PATIENT_ID) -> Reminder:
@@ -350,9 +352,9 @@ def create_reminder(title: str, kind: str, recurrence: str = "once",
     with db_cursor() as cursor:
         cursor.execute(
             """INSERT INTO reminders
-               (title, kind, recurrence, due_ts, time_of_day, notes, created_ts, patient_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (title, kind, recurrence, due_ts, time_of_day, notes, created_ts, patient_id),
+               (title, kind, recurrence, interval_days, due_ts, time_of_day, notes, created_ts, patient_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (title, kind, recurrence, interval_days, due_ts, time_of_day, notes, created_ts, patient_id),
         )
         new_id = cursor.lastrowid
         cursor.execute("SELECT * FROM reminders WHERE reminder_id = ?", (new_id,))

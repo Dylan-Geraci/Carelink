@@ -169,9 +169,10 @@ class TrendsResponse(BaseModel):
 class ReminderCreate(BaseModel):
     title: str
     kind: str                               # 'medication' | 'appointment'
-    recurrence: str = "once"                # 'once' | 'daily'
-    due_ts: Optional[int] = None            # one-off: absolute epoch ms
-    time_of_day: Optional[str] = None       # daily: 'HH:MM' local
+    recurrence: str = "once"                # 'once' | 'daily' | 'every_other_day' | 'weekly'
+    interval_days: Optional[int] = None     # recurring: days between doses (derived if omitted)
+    due_ts: Optional[int] = None            # one-off: epoch ms; recurring: start anchor (sets weekday)
+    time_of_day: Optional[str] = None       # recurring: 'HH:MM' local
     notes: Optional[str] = None
 
 
@@ -189,6 +190,7 @@ class Reminder(BaseModel):
     title: str
     kind: str
     recurrence: str
+    interval_days: Optional[int] = None
     due_ts: Optional[int] = None
     time_of_day: Optional[str] = None
     notes: Optional[str] = None

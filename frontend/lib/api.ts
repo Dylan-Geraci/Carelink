@@ -145,13 +145,14 @@ export interface TrendsResponse {
 
 // Smart reminders (M3) — must stay in sync with backend/models.py
 export type ReminderKind = "medication" | "appointment"
-export type ReminderRecurrence = "once" | "daily"
+export type ReminderRecurrence = "once" | "daily" | "every_other_day" | "weekly"
 
 export interface Reminder {
   reminder_id: number
   title: string
   kind: ReminderKind
   recurrence: ReminderRecurrence
+  interval_days?: number | null
   due_ts?: number | null
   time_of_day?: string | null
   notes?: string | null
@@ -164,6 +165,7 @@ export interface ReminderCreate {
   title: string
   kind: ReminderKind
   recurrence: ReminderRecurrence
+  interval_days?: number | null
   due_ts?: number | null
   time_of_day?: string | null
   notes?: string | null
